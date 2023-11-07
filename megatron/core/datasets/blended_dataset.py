@@ -133,7 +133,7 @@ class BlendedDataset(torch.utils.data.Dataset):
             )
             t_beg = time.time()
             from megatron.core.datasets import helpers
-
+            
             dataset_index = numpy.zeros(self.size, dtype=numpy.int16)
             dataset_sample_index = numpy.zeros(self.size, dtype=numpy.int64)
             helpers.build_blending_indices(
