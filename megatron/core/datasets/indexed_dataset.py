@@ -536,7 +536,7 @@ class MMapIndexedDatasetBuilder(object):
     """
 
     def __init__(
-        self, bin_path: str, dtype: Type[numpy.number] = numpy.int32, multimodal: bool = False
+        self, bin_path: str, dtype: Type[numpy.number] = numpy.int64, multimodal: bool = False
     ) -> None:
         self.data_file = open(bin_path, "wb")
         self.dtype = dtype
