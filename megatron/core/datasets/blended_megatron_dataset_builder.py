@@ -198,7 +198,7 @@ class BlendedMegatronDatasetBuilder(object):
                     start=split_idx_bounds[i],
                     stop=split_idx_bounds[i + 1],
                     step=1,
-                    dtype=numpy.int32,
+                    dtype=numpy.int64,
                 )
                 for i, _ in enumerate(Split)
             ]
