@@ -18,7 +18,7 @@ MERGE_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt
 DATA_PATH=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/train_text_document
 
 WANDB_PROJECT=moe
-WANDB_EXP_NAME=moe_1p3b_16e_slimpj_test
+WANDB_EXP_NAME=moe_365_16E_slimpj_test
 WANDB_SAVE_DIR=/workspace/wandb
 
 DISTRIBUTED_ARGS="
@@ -26,36 +26,38 @@ DISTRIBUTED_ARGS="
     --nnodes $NNODES \
     --node_rank $NODE_RANK \
     --master_addr $MASTER_ADDR \
-    --master_port $MASTER_PORT \
+    --master_port $MASTER_PORT
 "
 
 GPT_ARGS="
-    --num-layers 2 \
-    --hidden-size 64 \
-    --num-attention-heads 1 \
-    --seq-length 64 \
-    --max-position-embeddings 64 \
-    --micro-batch-size 8 \
+    --num-layers 24 \
+    --hidden-size 1024 \
+    --num-attention-heads 16 \
+    --seq-length 1024 \
+    --max-position-embeddings 1024 \
+    --micro-batch-size 32 \
     --global-batch-size 1024 \
     --lr 0.00015 \
-    --train-iters 500 \
-    --lr-decay-iters 500 \
+    --train-iters 570000 \
+    --lr-decay-iters 570000 \
     --lr-decay-style cosine \
-    --min-lr 0.001 \
-    --constant-lr 0.05 \
-    --constant-fraction 0.4 \
-    --inv-sqrt-cooldown-fraction 0.3 \
-    --inv-sqrt-scale 30.0 \
-    --num-cycles 1 \
-    --weight-decay 1e-2 \
+    --min-lr 1.0e-5 \
+    --weight-decay 0.0 \
     --lr-warmup-fraction .01 \
     --clip-grad 1.0 \
     --fp16 \
     --num-experts 16 \
     --expert-model-parallel-size 8 \
     --recompute-granularity selective \
-    --use-flash-attn
-"
+    --use-flash-attn \
+    --accumulate-allreduce-grads-in-fp32 \
+    --attention-dropout 0.0 \
+    --hidden-dropout 0.0 \
+    --swiglu
+    "
+   # --fp8-format hybrid 
+   # --transformer-impl transformer_engine
+#"
 
 DATA_ARGS="
     --data-path $DATA_PATH \
