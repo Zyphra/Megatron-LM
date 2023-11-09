@@ -1,13 +1,17 @@
 #!/bin/bash
 
+export CXX=g++
+export CC=gcc
+
 # Runs the "345M" parameter model
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 
-CHECKPOINT_PATH=<Specify path>
-VOCAB_FILE=<Specify path to file>/gpt2-vocab.json
-MERGE_FILE=<Specify path to file>/gpt2-merges.txt
-DATA_PATH=<Specify path and file prefix>_text_document
+CHECKPOINT_PATH=/workspace/test_run
+VOCAB_FILE=/shared/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/vocab.json
+MERGE_FILE=/shared/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt
+DATA_PATH=/shared/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/train_text_document
+DATA_CACHE=/shared/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/test_cache
 
 GPT_ARGS="
     --num-layers 24 \
@@ -32,6 +36,7 @@ DATA_ARGS="
     --data-path $DATA_PATH \
     --vocab-file $VOCAB_FILE \
     --merge-file $MERGE_FILE \
+    --data-cache-path ${DATA_CACHE} \
     --split 949,50,1
 "
 
@@ -42,7 +47,7 @@ OUTPUT_ARGS="
     --eval-iters 10
 "
 
-torchrun pretrain_gpt.py \
+torchrun ../pretrain_gpt.py \
     $GPT_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \

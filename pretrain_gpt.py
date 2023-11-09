@@ -219,6 +219,19 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
     print_rank_0("> finished creating GPT datasets ...")
 
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+    tokenizer.add_special_tokens({"pad_token": "<|padding|>"})
+    print_rank_0("\n==========================================================================================")
+    print_rank_0("Testing dataset:")
+    for i in range(10):
+        print_rank_0(f"\nSample {i}:")
+        test_sample = train_ds[i]
+        print_rank_0(test_sample)        
+        print_rank_0("Detokenized:")
+        print_rank_0(tokenizer.decode(test_sample['text']))
+    print_rank_0("==========================================================================================\n")    
+
     return train_ds, valid_ds, test_ds
 
 
