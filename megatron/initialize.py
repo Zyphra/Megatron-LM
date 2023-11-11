@@ -215,7 +215,13 @@ def _initialize_distributed():
         args.world_size = torch.distributed.get_world_size()
 
     else:
-
+        # os.environ['LOCAL_RANK'] = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
+        # os.environ['WORLD_SIZE'] = os.environ['OMPI_COMM_WORLD_SIZE']
+        # os.environ['WORLD_RANK'] = os.environ['OMPI_COMM_WORLD_RANK']
+        # os.environ['MASTER_ADDR'] = '172.18.135.11'
+        # os.environ['MASTER_PORT'] = '1234'
+        # args.rank = int(os.environ['WORLD_RANK'])
+        # args.world_size = int(os.environ['WORLD_SIZE'])
         if args.rank == 0:
             print("> initializing torch distributed ...", flush=True)
         # Manually set the device ids.
@@ -228,6 +234,8 @@ def _initialize_distributed():
             else:
                 args.local_rank = device
             torch.cuda.set_device(device)
+        
+        print(f"Backend: {args.distributed_backend}")
         # Call the init process
         torch.distributed.init_process_group(
             backend=args.distributed_backend,

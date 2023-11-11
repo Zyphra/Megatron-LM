@@ -30,6 +30,9 @@ from megatron.core.models.gpt.gpt_layer_specs import (
     gpt_layer_with_transformer_engine_spec_moe
 )
 
+os.environ['TP_SOCKET_IFNAME'] = 'ibs108'
+os.environ['GLOO_SOCKET_IFNAME'] = 'ibs108'
+
 def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megatron.model.GPTModel]:
     """Builds the model.
 

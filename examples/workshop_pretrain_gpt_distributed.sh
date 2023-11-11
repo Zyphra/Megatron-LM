@@ -6,9 +6,9 @@ export CUDA_DEVICE_MAX_CONNECTIONS=1
 
 GPUS_PER_NODE=8
 # Change for multinode config
-MASTER_ADDR=localhost
+MASTER_ADDR=172.18.135.12
 MASTER_PORT=6000
-NNODES=1
+NNODES=2
 NODE_RANK=0
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
@@ -74,7 +74,7 @@ GPT_ARGS="
     --fp16 \
     --recompute-granularity selective \
     --use-flash-attn
-    --tensor-model-parallel-size 8 \
+    --tensor-model-parallel-size 1 \
 "
 
 DATA_ARGS="
@@ -88,18 +88,32 @@ DATA_ARGS="
 
 OUTPUT_ARGS="
     --log-interval 1 \
-    --save-interval 5 \
-    --eval-interval 5 \
-    --eval-iters 10 \
+    --save-interval 1000 \
+    --eval-interval 1000 \
+    --eval-iters 50 \
     --wandb-project $WANDB_PROJECT \
     --wandb-exp-name $WANDB_EXP_NAME \
     --wandb-save-dir $WANDB_SAVE_DIR
 "
 
-torchrun $DISTRIBUTED_ARGS /workspace/Megatron-LM/pretrain_gpt.py \
+torchrun $DISTRIBUTED_ARGS /opt/Megatron-LM/pretrain_gpt.py \
     $GPT_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
     --distributed-backend nccl \
     --save $CHECKPOINT_PATH \
     --load $CHECKPOINT_PATH
+
+#mpirun -np 8 -H 172.18.135.11:8 --allow-run-as-root \
+#    -bind-to none -map-by slot \
+#    -x LIBRARY_PATH \
+#    -x WANDB_API_KEY=6f0443d34d41df289b878635a247d89381c06271 \
+#    -x CUDA_DEVICE_MAX_CONNECTIONS -x PATH -x LD_LIBRARY_PATH \
+#    -x MASTER_ADDR=172.18.135.11 -x MASTER_PORT=1234 \
+#    python /opt/Megatron-LM/pretrain_gpt.py \
+#    $GPT_ARGS \
+#    $DATA_ARGS \
+#    $OUTPUT_ARGS \
+#    --distributed-backend nccl \
+#    --save $CHECKPOINT_PATH \
+#    --load $CHECKPOINT_PATH
