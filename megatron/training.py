@@ -409,9 +409,7 @@ def setup_model_and_optimizer(model_provider_func,
         args.iteration = 73000
         print_rank_0(f"Overriding args.iteration with {args.iteration}")
         print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
-        import time
-        time.sleep(10)
-
+        
         timers('load-checkpoint').stop(barrier=True)
         timers.log(['load-checkpoint'])
     else:
@@ -735,8 +733,6 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     print_rank_0(f"Consumed train samples: {args.consumed_train_samples}")
     print_rank_0(f"Consumed valid samples: {args.consumed_valid_samples}")
     print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
-    import time
-    time.sleep(10)    
 
     # Setup some training config params
     config.grad_scale_func = optimizer.scale_loss

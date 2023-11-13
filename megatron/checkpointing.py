@@ -578,8 +578,6 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
         args.consumed_train_samples = 84096000
         print_rank_0(f"Overriding args.consumed_train_samples with {args.consumed_train_samples}")
         print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
-        import time
-        time.sleep(10)
 
         update_num_microbatches(consumed_samples=args.consumed_train_samples)
         args.consumed_valid_samples = getattr(checkpoint_args,
