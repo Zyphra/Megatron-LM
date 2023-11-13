@@ -403,9 +403,13 @@ def setup_model_and_optimizer(model_provider_func,
     if args.load is not None:
         timers = get_timers()
         timers('load-checkpoint', log_level=0).start(barrier=True)
-        args.iteration = load_checkpoint(model, optimizer, opt_param_scheduler)
+        args.iteration = load_checkpoint(model, optimizer, opt_param_scheduler) # Absolutely need to run this in order to update global vars
+        print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
         args.iteration = 73000
         print_rank_0(f"Overriding args.iteration with {args.iteration}")
+        import time
+        time.sleep(10)
+        print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
         timers('load-checkpoint').stop(barrier=True)
         timers.log(['load-checkpoint'])
     else:
@@ -728,9 +732,9 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     print_rank_0(f"Iteration: {args.iteration}")
     print_rank_0(f"Consumed train samples: {args.consumed_train_samples}")
     print_rank_0(f"Consumed valid samples: {args.consumed_valid_samples}")
-    print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
     import time
-    time.sleep(60)
+    time.sleep(10)    
+    print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
 
     # Setup some training config params
     config.grad_scale_func = optimizer.scale_loss
