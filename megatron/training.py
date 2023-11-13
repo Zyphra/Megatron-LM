@@ -404,6 +404,8 @@ def setup_model_and_optimizer(model_provider_func,
         timers = get_timers()
         timers('load-checkpoint', log_level=0).start(barrier=True)
         args.iteration = load_checkpoint(model, optimizer, opt_param_scheduler)
+        args.iteration = 73000
+        print_rank_0(f"Overriding args.iteration with {args.iteration}")
         timers('load-checkpoint').stop(barrier=True)
         timers.log(['load-checkpoint'])
     else:
