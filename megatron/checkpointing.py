@@ -192,8 +192,16 @@ def read_metadata(tracker_filename):
     # Get the max iteration retrieved across the ranks.
     if torch.distributed.is_initialized():
         iters_cuda = torch.cuda.LongTensor([iteration])
-        torch.distributed.all_reduce(iters_cuda, op=torch.distributed.ReduceOp.MAX)
+        print("--------------------------------------------------------------------------")
+        print(f"iteration: {iteration}")
+        print(f"iters_cuda: {iters_cuda}")
+        # torch.distributed.all_reduce(iters_cuda, op=torch.distributed.ReduceOp.MAX)
+        print(f"iters_cuda after all_reduce: {iters_cuda}")
         max_iter = iters_cuda[0].item()
+        print(f"max_iter: {max_iter}")
+        import time
+        time.sleep(10)
+        print("--------------------------------------------------------------------------")
 
         # We should now have all the same iteration.
         # If not, print a warning and chose the maximum

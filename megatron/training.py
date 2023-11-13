@@ -722,6 +722,13 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
 
     # Iterations.
     iteration = args.iteration
+    print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
+    print_rank_0(f"Iteration: {args.iteration}")
+    print_rank_0(f"Consumed train samples: {args.consumed_train_samples}")
+    print_rank_0(f"Consumed valid samples: {args.consumed_valid_samples}")
+    print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
+    import time
+    time.sleep(60)
 
     # Setup some training config params
     config.grad_scale_func = optimizer.scale_loss
