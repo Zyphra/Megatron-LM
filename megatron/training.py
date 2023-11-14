@@ -408,8 +408,8 @@ def setup_model_and_optimizer(model_provider_func,
         print_rank_0(f"Overriding args.iteration with {args.iteration}")
         
         print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
-        args.iteration = 73000
-        print_rank_0(f"Overriding args.iteration with {args.iteration}")
+        #args.iteration = 73000
+        #print_rank_0(f"Overriding args.iteration with {args.iteration}")
         print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
         
         timers('load-checkpoint').stop(barrier=True)
