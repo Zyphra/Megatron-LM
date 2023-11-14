@@ -17,14 +17,14 @@ NNODES=8
 NODE_RANK=1
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
-CHECKPOINT_PATH=/workspace/qanthony/ckpts_1p3b
+CHECKPOINT_PATH=/checkpoints/megarun/ckpts_1p3b
 VOCAB_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/vocab.json
 MERGE_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt
 DATA_PATH=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/train_text_document
 
 WANDB_PROJECT=moe
-WANDB_EXP_NAME=final_moe_1p3b_8e_600B_slimpj
-WANDB_SAVE_DIR=/workspace/qanthony/wandb
+WANDB_EXP_NAME=final_moe_1p3b_8e_600B_slimpj_73k
+WANDB_SAVE_DIR=/checkpoints/megarun/wandb
 
 DISTRIBUTED_ARGS="
     --nproc_per_node $GPUS_PER_NODE \
