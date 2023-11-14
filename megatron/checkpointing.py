@@ -583,7 +583,6 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
         args.consumed_valid_samples = getattr(checkpoint_args,
                                               'consumed_valid_samples', 0)
 
-        #print_rank_0(f"Overriding args.consumed_train_samples with {args.consumed_train_samples}")
     else:
         print_rank_0('could not find arguments in the checkpoint ...')
 

@@ -23,7 +23,7 @@ MERGE_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt
 DATA_PATH=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/train_text_document
 
 WANDB_PROJECT=moe
-WANDB_EXP_NAME=final_moe_1p3b_8e_600B_slimpj_73k
+WANDB_EXP_NAME=final_moe_1p3b_8e_600B_slimpj_76k
 WANDB_SAVE_DIR=/checkpoints/megarun/wandb
 
 
