@@ -26,6 +26,7 @@ WANDB_PROJECT=moe
 WANDB_EXP_NAME=final_moe_1p3b_8e_600B_slimpj_73k
 WANDB_SAVE_DIR=/checkpoints/megarun/wandb
 
+
 DISTRIBUTED_ARGS="
     --nproc_per_node $GPUS_PER_NODE \
     --nnodes $NNODES \
