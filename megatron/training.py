@@ -403,7 +403,9 @@ def setup_model_and_optimizer(model_provider_func,
     if args.load is not None:
         timers = get_timers()
         timers('load-checkpoint', log_level=0).start(barrier=True)
-        args.iteration = load_checkpoint(model, optimizer, opt_param_scheduler) # Absolutely need to run this in order to update global vars
+        #args.iteration = load_checkpoint(model, optimizer, opt_param_scheduler) # Absolutely need to run this in order to update global vars
+        args.iteration = 70000
+        print_rank_0(f"Overriding args.iteration with {args.iteration}")
         
         print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
         args.iteration = 73000
