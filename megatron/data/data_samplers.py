@@ -17,6 +17,11 @@ def build_pretraining_data_loader(dataset, consumed_samples):
     if dataset is None:
         return None
     args = get_args()
+    
+    from megatron import print_rank_0
+    print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
+    print_rank_0(f"Buiding dataloader starting with {consumed_samples} consumed samples.")
+    print_rank_0("-----------------------------------------------------------------------------------------------------------------------")
 
     # Megatron sampler
     if args.dataloader_type == 'single':
