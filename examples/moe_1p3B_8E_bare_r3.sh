@@ -44,6 +44,7 @@ GPT_ARGS="
     --micro-batch-size 6 \
     --global-batch-size 1152 \
     --lr 0.0002 \
+    --override-opt_param-scheduler \
     --train-iters 290000 \
     --lr-decay-iters 290000 \
     --lr-decay-style cosine \
