@@ -43,7 +43,7 @@ GPT_ARGS="
     --max-position-embeddings 2048 \
     --micro-batch-size 6 \
     --global-batch-size 1152 \
-    --lr 0.00025 \
+    --lr 0.0002 \
     --train-iters 290000 \
     --lr-decay-iters 290000 \
     --lr-decay-style cosine \
@@ -60,9 +60,9 @@ GPT_ARGS="
     --attention-dropout 0.0 \
     --hidden-dropout 0.0 \
     --swiglu \
-    --adam-beta2 0.95
     --position-embedding-type rope \
     --use-rotary-position-embeddings \
+    --adam-beta2 0.95    
     "
     #--fp8-format hybrid \
     #--transformer-impl transformer_engine 
