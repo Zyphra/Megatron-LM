@@ -40,6 +40,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_transformer_engine_args(parser)
     parser = _add_retro_args(parser)
     parser = _add_experimental_args(parser)
+    parser = _add_zyphra_custom_args(parser)
 
     # Custom arguments.
     if extra_args_provider is not None:
@@ -1384,4 +1385,12 @@ def _add_experimental_args(parser):
                             'layer implementation. For more details, check the'
                             '`transformer_layer.py` file that details the use '
                             'of spec based customization.')
+
     return parser
+
+def _add_Zyphra_custom_args(parser):
+    group = parser.add_argument_group(title='zyphra')
+
+    group.add_argument('--loss-spike-threshold',
+                       type=float, default=0,
+                       help='Number of standard deviations above the previous loss to consider acceptable. 0 is no loss spike detection.')

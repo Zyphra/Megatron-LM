@@ -42,6 +42,7 @@ from megatron.initialize import set_jit_fusion_options
 from megatron.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.utils import check_adlr_autoresume_termination
 from megatron.utils import unwrap_model
+from megatron.utils import RunningStatistics
 from megatron.data.data_samplers import build_pretraining_data_loader
 from megatron.utils import calc_params_l2_norm
 from megatron.utils import throughput_calculator
@@ -167,6 +168,10 @@ def pretrain(train_valid_test_dataset_provider,
 
         if args.save and iteration != 0:
             save_checkpoint(iteration, model, optimizer, opt_param_scheduler)
+
+        # initialize statistics counter
+        if args.loss_spike_threshold > 0:
+            loss_stats = RunningStatistics()
     else:
         print_rank_0('skipping training (--skip-train is on) ...')
 
@@ -453,10 +458,21 @@ def train_step(forward_step_func, data_iterator,
         unwrapped_model = unwrap_model(model[0])
         unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
 
-    # Update parameters.
-    timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
-    update_successful, grad_norm, num_zeros_in_grad = optimizer.step(args, timers)
-    timers('optimizer').stop()
+
+    # check we are not in a loss spike
+    total_loss = losses_reduced.item()
+    loss_stats.add(total_loss)
+    loss_std = loss_stats.get_stddev()
+
+    if total_loss <= loss_stats.prev_value + (args.loss_spike_threshold * loss_std)
+        # Update parameters.
+        # check 
+        timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
+        update_successful, grad_norm, num_zeros_in_grad = optimizer.step(args, timers)
+        timers('optimizer').stop()
+    else:
+        print_rank_0("Loss value " + str(total_loss) + " greater than the loss spike threshold. Skipping batch")
+        update_successful = True # simulate the update so we increment the num microbatches
 
     # Gather params.
     if update_successful:

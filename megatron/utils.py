@@ -308,3 +308,41 @@ def throughput_calculator(model, args, iteration_time, total_iterations):
     flops_per_iteration = (24 * checkpoint_activations_factor * batch_size * seq_len * num_layers * (hidden_size**2)) * (1. + (seq_len / (6. * hidden_size)) + (vocab_size / (16. * num_layers * hidden_size)))
     tflops = flops_per_iteration / (elapsed_time_per_iter * args.world_size * (10**12))
     return samples_per_second, tflops, approx_parameters_in_billions
+
+
+class RunningStatistics():
+    def __init__(self):
+        self.K = 0
+        self.Ex = 0
+        self.Ex2 = 0
+        self.n = 0
+        self.prev_value = 1e10
+        self.current_value = 1e10
+
+    def add(self,x):
+        if self.n == 0:
+            self.K = x
+        self.n += 1
+        self.Ex += x - self.K
+        self.Ex2 += (x - self.K) ** 2
+        self.prev_value = self.current_value
+        self.current_value = x
+
+    def remove(self,x):
+        self.n -= 1
+        self.Ex -= x - self.K
+        self.Ex2 -= (x - self.K) ** 2
+        self.current_value = prev_value
+        self.prev_value = 1e10
+
+    def get_mean(self):
+        return self.K + self.Ex / self.n
+
+    def get_variance(self):
+        print("N: ", self.n)
+        if self.n <=1:
+            return 1e10
+        return (self.Ex2 - self.Ex**2 / self.n) / (self.n - 1)
+    
+    def get_stddev(self):
+        return self.get_variance() ** 0.5
