@@ -174,7 +174,7 @@ def save_token_count(token_count, layer, save, iteration):
     checkpoint_name = get_checkpoint_name(save, iteration)
     checkpoint_path=os.path.dirname(checkpoint_name)
 
-    with open(os.path.join(checkpoint_path, "token_counts.pkl"), 'ab') as file:
+    with open(os.path.join(checkpoint_path, 'token_counts.pkl'), 'ab') as file:
         pickle.dump([layer, token_count_list], file)
 
 class SwitchMLP(MegatronModule):
@@ -271,7 +271,6 @@ class SwitchMLP(MegatronModule):
             if self.routing == 'top2':
                 global_indices_2 = max_ind_2
 
-
         # Collect token count for each expert
         if self.iteration % self.profile_switch_routing == 0:
             if self.routing == 'sinkhorn' or self.routing == 'top1':
@@ -280,7 +279,6 @@ class SwitchMLP(MegatronModule):
                 token_count = torch.stack([torch.bincount(global_indices, minlength=E),torch.bincount(global_indices_2, minlength=E)])
             # Save to file in checkpoint dir
             save_token_count(token_count, self.layer, self.save, self.iteration)
-        
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
@@ -962,7 +960,7 @@ class ParallelTransformerLayer(MegatronModule):
 
         # MLP
         if args.num_experts is not None:
-            self.mlp = SwitchMLP(config)
+            self.mlp = SwitchMLP(config, layer_number)
         else:
             self.mlp = ParallelMLP(config)
 
