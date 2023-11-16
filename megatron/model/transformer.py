@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from typing import Optional
+import pickle
 
 from megatron import get_timers, get_args, get_retro_args, core, get_num_microbatches
 from .module import MegatronModule
@@ -19,6 +20,7 @@ from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEm
 from megatron.model.utils import attention_mask_func, openai_gelu, erf_gelu, get_norm
 from megatron.core.tensor_parallel import gather_from_sequence_parallel_region_to_moe, reduce_scatter_to_sequence_parallel_region_from_moe
 from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_and_expert_parallel_group
+from megatron.checkpointing import get_checkpoint_name
 
 try:
     from einops import rearrange
@@ -166,11 +168,20 @@ def sinkhorn(cost, tol=0.0001):
         d1_old = d1
     return d1*cost*d0.unsqueeze(1)
 
+def save_token_count(token_count, layer, save, iteration):
+    token_count_list = token_count.cpu().tolist()
+
+    checkpoint_name = get_checkpoint_name(save, iteration)
+    checkpoint_path=os.path.dirname(checkpoint_name)
+
+    with open(os.path.join(checkpoint_path, "token_counts.pkl"), 'ab') as file:
+        pickle.dump([layer, token_count_list], file)
+
 class SwitchMLP(MegatronModule):
     """
     Routes input to one of N MLP "experts"
     """
-    def __init__(self, config):
+    def __init__(self, config, layer=None):
         super(SwitchMLP, self).__init__()
         args = get_args()
         self.router = torch.nn.Linear(args.hidden_size, args.num_experts)
@@ -178,6 +189,10 @@ class SwitchMLP(MegatronModule):
         self.sequence_parallel = config.sequence_parallel
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
+        self.layer = layer
+        self.save = args.save
+        self.iteration = args.iteration
+        self.profile_switch_routing = args.profile_switch_routing
 
         assert args.num_experts % self.expert_parallel_size == 0
         self.num_local_experts = args.num_experts // self.expert_parallel_size
@@ -255,6 +270,17 @@ class SwitchMLP(MegatronModule):
             global_indices = max_ind
             if self.routing == 'top2':
                 global_indices_2 = max_ind_2
+
+
+        # Collect token count for each expert
+        if self.iteration % self.profile_switch_routing == 0:
+            if self.routing == 'sinkhorn' or self.routing == 'top1':
+                token_count = torch.bincount(global_indices, minlength=E)
+            if self.routing == 'top2':
+                token_count = torch.stack([torch.bincount(global_indices, minlength=E),torch.bincount(global_indices_2, minlength=E)])
+            # Save to file in checkpoint dir
+            save_token_count(token_count, self.layer, self.save, self.iteration)
+        
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
