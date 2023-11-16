@@ -4,8 +4,10 @@ import megatron.core.parallel_state as ps
 
 class Utils:
 
-    world_size = torch.cuda.device_count()
+    #world_size = torch.cuda.device_count()
+    world_size = 1
     rank = int(os.environ['LOCAL_RANK'])
+    print("IN UTILS: ", world_size, rank)
 
     @staticmethod
     def initialize_distributed():
@@ -15,6 +17,7 @@ class Utils:
         master_ip = os.getenv('MASTER_ADDR', 'localhost')
         master_port = os.getenv('MASTER_PORT', '6000')
         init_method += master_ip + ':' + master_port
+        print("TRYING TO INIT PROCESS GROUP")
         torch.distributed.init_process_group(backend='nccl', world_size=Utils.world_size, rank=Utils.rank, init_method=init_method)
         
     @staticmethod

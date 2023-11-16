@@ -22,12 +22,17 @@ def sinkhorn(cost, tol=0.0001):
     eps = 0.00000001
     error = 1e9
     d1_old = d1
+    num_iterations = 0
     while error > tol:
         d0 = (1 / d0.size(0)) * 1 / (torch.sum(d1 * cost, 1) + eps)
         d1 = (1 / d1.size(0)) * 1 / (torch.sum(d0.unsqueeze(1) * cost, 0) + eps)
         error = torch.mean(torch.abs(d1_old - d1))
         d1_old = d1
+        num_iterations +=1 
+    print("SINKHORN NUM ITERS: ", num_iterations)
     return d1 * cost * d0.unsqueeze(1)
+
+# sinkhorn seems at least reasonable. We can do topk on top of sinkhorn if we want to
 
 
 class SwitchMLP(MegatronModule):
@@ -38,7 +43,6 @@ class SwitchMLP(MegatronModule):
 
     def __init__(self, config: TransformerConfig, submodules: MLPSubmodules):
         super().__init__(config=config)
-
         self.config: TransformerConfig = config
 
         self.router = torch.nn.Linear(self.config.hidden_size, self.config.num_moe_experts)
@@ -47,7 +51,9 @@ class SwitchMLP(MegatronModule):
         self.route_algo = sinkhorn
         self.router_activation = torch.sigmoid
         self.expert_parallel_size = parallel_state.get_expert_model_parallel_world_size()
-
+        self.expert_parallel_size = 1
+        print("EXPERT PARALLEL: ",self.expert_parallel_size)
+        print("NUM EXPERTS: ", self.config.num_moe_experts)
         assert self.config.num_moe_experts % self.expert_parallel_size == 0
         self.num_local_experts = self.config.num_moe_experts // self.expert_parallel_size
         local_expert_indices_offset = (
@@ -81,33 +87,49 @@ class SwitchMLP(MegatronModule):
         return output
 
     def forward(self, hidden_states):
+        print("IN FORWARD")
         hidden_shape = hidden_states.shape
+        print("HIDDEN SHAPE: ", hidden_shape)
         route = self.router(hidden_states)
+        print("ROUTE: ", route.shape)
         route = route.view(-1, self.config.num_moe_experts)
-
+        print("ROUTE AFTER RESHAPE: ", route.shape)
         if self.training:
             with torch.no_grad():
                 norm_route = self.route_algo(
                     route.detach().to(dtype=torch.float32)
                 )  # explicit fp32 conversion for stability
+                print("NORM ROUTE: ", norm_route.shape)
                 _, max_ind = torch.max(norm_route, dim=1)
             route = self.router_activation(route)
-            max_prob = route[torch.arange(route.size(0)), max_ind]
+            #print("after router activation: ", route.shape)
+            max_prob = route[torch.arange(route.size(0)), max_ind] # so why do we even sigmoid it makes no difference?
+            #print("max prob: ", max_prob.shape)
+            #route = self.router_activation(route)
+            #max_prob = route[torch.arange(route.size(0)), max_ind]
+            #print("max prob after sigmoid: ", max_prob)
         else:
             route = self.router_activation(route)
             max_prob, max_ind = torch.max(route, dim=1)
-
+        
+        print("max ind: ", max_ind.shape)
+        print("max ind: ", max_ind) # for each batch, for each sequence element, we select a token
         max_prob = torch.unsqueeze(max_prob, 1)
         hidden_states = hidden_states.view(-1, hidden_shape[-1])
+        print("hidden_states after review: ", hidden_states.shape)
 
         if self.sequence_parallel or (self.expert_parallel_size > 1):
             global_hidden_states = tensor_parallel.gather_from_sequence_parallel_region_to_moe(
                 hidden_states
             )
+            print("GLOBAL HIDDEN STATES: ", global_hidden_states.shape)
+            
             global_indices = self.gather_indices(max_ind)
+            print("GLOBAL INDICES: ", global_indices.shape)
         else:
             global_hidden_states = hidden_states
             global_indices = max_ind
+            print("globals: ", global_hidden_states.shape, global_indices.shape)
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.add_bias:
@@ -116,8 +138,12 @@ class SwitchMLP(MegatronModule):
         for expert_num, expert in enumerate(self.local_experts):
             local_expert_index = self.local_expert_indices[expert_num]
             local_indices = (global_indices == local_expert_index).nonzero()
-            hidden = global_hidden_states[local_indices, :]
+            print("LOCAL INDICES: ", local_indices[:,0])
+            hidden = global_hidden_states[local_indices, :] # this is across tokens? tokens are assigned?
+            print("HIDDEN: ", hidden.shape)
             output, output_bias = expert(hidden)
+            # why do we separate the biases
+            print("OUTPUT: ", output.shape)
 
             output_total[local_indices, :] = output
             if self.add_bias:
@@ -139,6 +165,8 @@ class SwitchMLP(MegatronModule):
                 )
 
         output_total = output_total * max_prob
+        # okay this is super weird so we weight by the maximum probability that we get
+        # in the end which makes no actual sense!? -- I guess it does but this makes no sense given we are doing top-1
         output_total = output_total.view(hidden_shape)
         if self.add_bias:
             output_bias_total = output_bias_total * max_prob
