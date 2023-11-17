@@ -172,7 +172,7 @@ def save_token_count(token_count, layer):
     print('SAVING_SAVING_SAVING_SAVING_SAVING_SAVING_SAVING')
     
     #args.router_profiling_path
-    with open(os.path.join(/workspace/, 'token_counts.pkl'), 'ab') as file:
+    with open(os.path.join('/workspace/', 'token_counts.pkl'), 'ab') as file:
         pickle.dump([layer, token_count_list], file)
 
 class SwitchMLP(MegatronModule):
