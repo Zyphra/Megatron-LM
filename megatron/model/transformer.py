@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 from typing import Optional
 import pickle
+import os
 
 from megatron import get_timers, get_args, get_retro_args, core, get_num_microbatches
 from .module import MegatronModule
