@@ -190,7 +190,6 @@ class SwitchMLP(MegatronModule):
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
         self.layer = layer
         self.router_profiling_interval = 1# args.router_profiling_interval
-        self.iteration = args.curr_iteration
 
         assert args.num_experts % self.expert_parallel_size == 0
         self.num_local_experts = args.num_experts // self.expert_parallel_size
@@ -276,7 +275,7 @@ class SwitchMLP(MegatronModule):
         if self.routing == 'top2':
             token_count = torch.stack([torch.bincount(global_indices, minlength=args.num_experts),torch.bincount(global_indices_2, minlength=args.num_experts)])
         # Save to file in checkpoint dir
-        save_token_count(token_count, self.layer, self.iteration)
+        save_token_count(token_count, self.layer, args.iteration)
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
