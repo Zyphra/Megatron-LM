@@ -20,7 +20,6 @@ from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEm
 from megatron.model.utils import attention_mask_func, openai_gelu, erf_gelu, get_norm
 from megatron.core.tensor_parallel import gather_from_sequence_parallel_region_to_moe, reduce_scatter_to_sequence_parallel_region_from_moe
 from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_and_expert_parallel_group
-from megatron.checkpointing import get_checkpoint_name
 
 try:
     from einops import rearrange
@@ -171,6 +170,7 @@ def sinkhorn(cost, tol=0.0001):
 def save_token_count(token_count, layer, save, iteration):
     token_count_list = token_count.cpu().tolist()
 
+    from megatron.checkpointing import get_checkpoint_name
     checkpoint_name = get_checkpoint_name(save, iteration)
     checkpoint_path=os.path.dirname(checkpoint_name)
 
