@@ -168,13 +168,13 @@ def sinkhorn(cost, tol=0.0001):
         d1_old = d1
     return d1*cost*d0.unsqueeze(1)
 
-def save_token_count(token_count, layer):
+def save_token_count(token_count, layer, iteration):
     token_count_list = token_count.cpu().tolist()
-    print('SAVING_SAVING_SAVING_SAVING_SAVING_SAVING_SAVING')
+    print('SAVING_SAVING_SAVING_SAVING_SAVING_SAVING_SAVING. Layer:', layer, 'Iteration:',iteration)
     
     #args.router_profiling_path
     with open(os.path.join('/workspace/', 'token_counts.pkl'), 'ab') as file:
-        pickle.dump([layer, token_count_list], file)
+        pickle.dump([layer, iteration, token_count_list], file)
 
 class SwitchMLP(MegatronModule):
     """
@@ -190,6 +190,7 @@ class SwitchMLP(MegatronModule):
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
         self.layer = layer
         self.router_profiling_interval = 1# args.router_profiling_interval
+        self.iteration = args.curr_iteration
 
         assert args.num_experts % self.expert_parallel_size == 0
         self.num_local_experts = args.num_experts // self.expert_parallel_size
@@ -269,14 +270,13 @@ class SwitchMLP(MegatronModule):
                 global_indices_2 = max_ind_2
 
         # Collect token count for each expert
-        # if self.iteration % self.profile_switch_routing == 0:
-        print('SAVING_SAVING_SAVING_SAVING_SAVING_SAVING_SAVING0000000000')
+        # if self.iteration % self.profile_switch_routing == 0:        
         if self.routing == 'sinkhorn' or self.routing == 'top1':
             token_count = torch.bincount(global_indices, minlength=args.num_experts)
         if self.routing == 'top2':
             token_count = torch.stack([torch.bincount(global_indices, minlength=args.num_experts),torch.bincount(global_indices_2, minlength=args.num_experts)])
         # Save to file in checkpoint dir
-        save_token_count(token_count, self.layer)
+        save_token_count(token_count, self.layer, self.iteration)
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
