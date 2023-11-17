@@ -275,7 +275,7 @@ class SwitchMLP(MegatronModule):
         if self.routing == 'top2':
             token_count = torch.stack([torch.bincount(global_indices, minlength=args.num_experts),torch.bincount(global_indices_2, minlength=args.num_experts)])
         # Save to file in checkpoint dir
-        save_token_count(token_count, self.layer, args.iteration)
+        save_token_count(token_count, self.layer, args.curr_iteration)
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
