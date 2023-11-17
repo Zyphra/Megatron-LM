@@ -192,7 +192,7 @@ class SwitchMLP(MegatronModule):
         self.layer = layer
         self.save = args.save
         self.iteration = args.iteration
-        self.profile_switch_routing = args.profile_switch_routing
+        self.profile_switch_routing = 1# args.profile_switch_routing
 
         assert args.num_experts % self.expert_parallel_size == 0
         self.num_local_experts = args.num_experts // self.expert_parallel_size
