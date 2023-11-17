@@ -169,6 +169,7 @@ def sinkhorn(cost, tol=0.0001):
 
 def save_token_count(token_count, layer, save, iteration):
     token_count_list = token_count.cpu().tolist()
+    print('SAVING_SAVING_SAVING_SAVING_SAVING_SAVING_SAVING')
 
     from megatron.checkpointing import get_checkpoint_name
     checkpoint_name = get_checkpoint_name(save, iteration)
@@ -273,6 +274,7 @@ class SwitchMLP(MegatronModule):
 
         # Collect token count for each expert
         if self.iteration % self.profile_switch_routing == 0:
+            print('SAVING_SAVING_SAVING_SAVING_SAVING_SAVING_SAVING0000000000')
             if self.routing == 'sinkhorn' or self.routing == 'top1':
                 token_count = torch.bincount(global_indices, minlength=E)
             if self.routing == 'top2':
