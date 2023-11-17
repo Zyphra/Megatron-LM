@@ -271,9 +271,9 @@ class SwitchMLP(MegatronModule):
         # if self.iteration % self.profile_switch_routing == 0:
         print('SAVING_SAVING_SAVING_SAVING_SAVING_SAVING_SAVING0000000000')
         if self.routing == 'sinkhorn' or self.routing == 'top1':
-            token_count = torch.bincount(global_indices, minlength=E)
+            token_count = torch.bincount(global_indices, minlength=args.num_experts)
         if self.routing == 'top2':
-            token_count = torch.stack([torch.bincount(global_indices, minlength=E),torch.bincount(global_indices_2, minlength=E)])
+            token_count = torch.stack([torch.bincount(global_indices, minlength=args.num_experts),torch.bincount(global_indices_2, minlength=args.num_experts)])
         # Save to file in checkpoint dir
         save_token_count(token_count, self.layer)
 
