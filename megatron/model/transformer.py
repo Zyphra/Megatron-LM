@@ -167,15 +167,12 @@ def sinkhorn(cost, tol=0.0001):
         d1_old = d1
     return d1*cost*d0.unsqueeze(1)
 
-def save_token_count(token_count, layer, save, iteration):
+def save_token_count(token_count, layer):
     token_count_list = token_count.cpu().tolist()
     print('SAVING_SAVING_SAVING_SAVING_SAVING_SAVING_SAVING')
-
-    from megatron.checkpointing import get_checkpoint_name
-    checkpoint_name = get_checkpoint_name(save, iteration)
-    checkpoint_path=os.path.dirname(checkpoint_name)
-
-    with open(os.path.join(checkpoint_path, 'token_counts.pkl'), 'ab') as file:
+    
+    #args.router_profiling_path
+    with open(os.path.join(/workspace/, 'token_counts.pkl'), 'ab') as file:
         pickle.dump([layer, token_count_list], file)
 
 class SwitchMLP(MegatronModule):
@@ -191,9 +188,7 @@ class SwitchMLP(MegatronModule):
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
         self.layer = layer
-        self.save = args.save
-        self.iteration = args.iteration
-        self.profile_switch_routing = 1# args.profile_switch_routing
+        self.router_profiling_interval = 1# args.router_profiling_interval
 
         assert args.num_experts % self.expert_parallel_size == 0
         self.num_local_experts = args.num_experts // self.expert_parallel_size
@@ -273,14 +268,14 @@ class SwitchMLP(MegatronModule):
                 global_indices_2 = max_ind_2
 
         # Collect token count for each expert
-        if self.iteration % self.profile_switch_routing == 0:
-            print('SAVING_SAVING_SAVING_SAVING_SAVING_SAVING_SAVING0000000000')
-            if self.routing == 'sinkhorn' or self.routing == 'top1':
-                token_count = torch.bincount(global_indices, minlength=E)
-            if self.routing == 'top2':
-                token_count = torch.stack([torch.bincount(global_indices, minlength=E),torch.bincount(global_indices_2, minlength=E)])
-            # Save to file in checkpoint dir
-            save_token_count(token_count, self.layer, self.save, self.iteration)
+        # if self.iteration % self.profile_switch_routing == 0:
+        print('SAVING_SAVING_SAVING_SAVING_SAVING_SAVING_SAVING0000000000')
+        if self.routing == 'sinkhorn' or self.routing == 'top1':
+            token_count = torch.bincount(global_indices, minlength=E)
+        if self.routing == 'top2':
+            token_count = torch.stack([torch.bincount(global_indices, minlength=E),torch.bincount(global_indices_2, minlength=E)])
+        # Save to file in checkpoint dir
+        save_token_count(token_count, self.layer)
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
