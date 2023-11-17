@@ -704,6 +704,12 @@ def _add_logging_args(parser):
                        help='Path to save the wandb results locally.')
     group.add_argument('--wandb-log-interval', type=int, default=1,
                        help='Report to wandb interval.')
+    group.add_argument('--wandb-save-dir', type=str, default='',
+                       help='Path to save the wandb results locally.')
+    group.add_argument('--router-profiling-path', type=str, default='',
+                       help='Path to save the expert statistics.')
+    group.add_argument('--router-profiling-interval', type=int, default=None,
+                       help='Number of iterations after which it saves expert statistics.')
     return parser
 
 
