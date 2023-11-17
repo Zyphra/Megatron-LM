@@ -168,9 +168,9 @@ def sinkhorn(cost, tol=0.0001):
         d1_old = d1
     return d1*cost*d0.unsqueeze(1)
 
-def save_token_count(token_count, layer, iteration):
+def save_token_count(token_count, layer, iteration, router_profiling_path):
     token_count_list = token_count.cpu().tolist()    
-    with open(os.path.join(args.router_profiling_path, 'token_counts.pkl'), 'ab') as file:
+    with open(os.path.join(router_profiling_path, 'token_counts.pkl'), 'ab') as file:
         pickle.dump([iteration, layer, token_count_list], file)
 
 class SwitchMLP(MegatronModule):
@@ -272,7 +272,7 @@ class SwitchMLP(MegatronModule):
             if self.routing == 'top2':
                 token_count = torch.stack([torch.bincount(global_indices, minlength=args.num_experts),
                                            torch.bincount(global_indices_2, minlength=args.num_experts)])
-            save_token_count(token_count, self.layer, args.curr_iteration)
+            save_token_count(token_count, self.layer, args.curr_iteration, args.router_profiling_path)
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
