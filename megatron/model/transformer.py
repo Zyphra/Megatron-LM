@@ -170,8 +170,7 @@ def sinkhorn(cost, tol=0.0001):
 
 def save_token_count(token_count, layer, iteration):
     token_count_list = token_count.cpu().tolist()    
-    #args.router_profiling_path
-    with open(os.path.join('/workspace/', 'token_counts.pkl'), 'ab') as file:
+    with open(os.path.join(args.router_profiling_path, 'token_counts.pkl'), 'ab') as file:
         pickle.dump([iteration, layer, token_count_list], file)
 
 class SwitchMLP(MegatronModule):
@@ -187,7 +186,7 @@ class SwitchMLP(MegatronModule):
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
         self.layer = layer
-        self.router_profiling_interval = 2# args.router_profiling_interval
+        self.router_profiling_interval = args.router_profiling_interval
 
         assert args.num_experts % self.expert_parallel_size == 0
         self.num_local_experts = args.num_experts // self.expert_parallel_size
