@@ -172,7 +172,7 @@ def save_token_count(token_count, layer, iteration):
     token_count_list = token_count.cpu().tolist()    
     #args.router_profiling_path
     with open(os.path.join('/workspace/', 'token_counts.pkl'), 'ab') as file:
-        pickle.dump([layer, iteration, token_count_list], file)
+        pickle.dump([iteration, layer, token_count_list], file)
 
 class SwitchMLP(MegatronModule):
     """
@@ -267,7 +267,7 @@ class SwitchMLP(MegatronModule):
                 global_indices_2 = max_ind_2
 
         # Collect token count for each expert and save to file
-        if args.curr_iteration % self.profile_switch_routing == 0:        
+        if args.curr_iteration % self.router_profiling_interval == 0:        
             if self.routing == 'sinkhorn' or self.routing == 'top1':
                 token_count = torch.bincount(global_indices, minlength=args.num_experts)
             if self.routing == 'top2':
