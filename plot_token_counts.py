@@ -19,7 +19,6 @@ def plot_token_counts(file_path, layer, output_path):
         print(f"No data found for layer {layer}")
         return
     
-    # Determine if we have a single list or a list of lists
     is_double_list = isinstance(first_entry[2][0], list)
 
     if not is_double_list:
