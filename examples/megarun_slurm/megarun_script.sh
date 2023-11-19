@@ -11,4 +11,4 @@ srun --output=/mnt/shared/slurm_logs/megarun.log \
     -v /mnt/shared/checkpoints/:/checkpoints \
     -v /mnt/shared/code/megarun/Megatron-LM/:/opt/Megatron-LM \
     zyphra/megatron_experimental:latest \
-    /opt/Megatron-LM/examples/slurm/moe_1p3B_8E_bare.sh
+    /opt/Megatron-LM/examples/megarun_slurm/moe_1p3B_8E_bare.sh
