@@ -43,8 +43,8 @@ class SwitchMLP(MegatronModule):
     Curently supports Sinkhorn based expert routing.
     """
 
-    def __init__(self, config: TransformerConfig, submodules: MLPSubmodules):
-        super().__init__(config=config, layer=None)
+    def __init__(self, config: TransformerConfig, submodules: MLPSubmodules, layer=None):
+        super().__init__(config=config)
         args = get_args()
 
         self.config: TransformerConfig = config
