@@ -105,7 +105,7 @@ class TransformerLayer(MegatronModule):
         # TODO how to set the gpt_layer_spec.py when we have moe_frequency > 1,
         #      where MLP and SwitchMLP both appear alternately?
         if submodules.mlp.module == SwitchMLP:
-            self.mlp = build_module(submodules.mlp, config=self.config, layer_number)
+            self.mlp = build_module(submodules.mlp, config=self.config, layer=layer_number)
         else:
             self.mlp = build_module(submodules.mlp, config=self.config)
 
