@@ -77,7 +77,6 @@ OUTPUT_ARGS="
     --wandb-exp-name $WANDB_EXP_NAME \
     --wandb-save-dir $WANDB_SAVE_DIR \
     --router-profiling-path $EXPERT_STATS_PATH \
-    --router-profiling-interval 2
 "
 
 torchrun $DISTRIBUTED_ARGS /workspace/Megatron-LM/pretrain_gpt.py \
