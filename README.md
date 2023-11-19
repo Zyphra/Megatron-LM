@@ -85,7 +85,7 @@ where
 
 If `--routing-mode` is set to `sinkhorn` or `top1`, a single plot will be generated. For `top2` routing mode, two plots will be created, representing the largest and second-largest probabilities. 
 
-A sample plot for `top2` routing mode is:
+A sample plot for `top2` routing mode (obtained from a tiny toy model) is:
 
 <img src="images/token_count.png" alt="Token Counts" width="70%">
 
