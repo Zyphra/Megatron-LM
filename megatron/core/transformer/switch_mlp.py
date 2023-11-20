@@ -139,6 +139,7 @@ class SwitchMLP(MegatronModule):
             mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
             ce = torch.mean(mask1.float(), dim=0)
             self.l_aux = torch.sum(me * ce) * self.config.num_moe_experts
+            print('COMPUTED BALANCING LOSS')
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
