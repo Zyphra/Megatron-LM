@@ -1,6 +1,7 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
 import torch
+import torch.nn.functional as F
 
 from megatron import get_args
 from megatron.core import parallel_state, tensor_parallel
@@ -47,8 +48,11 @@ class SwitchMLP(MegatronModule):
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
         self.sequence_parallel = config.sequence_parallel
-        self.route_algo = sinkhorn
+        if args.routing_mode == 'sinkhorn':
+            self.route_algo = sinkhorn
         self.router_activation = torch.sigmoid
+        if args.balancing_loss:
+            self.l_aux = None
         self.expert_parallel_size = parallel_state.get_expert_model_parallel_world_size()
 
         assert self.config.num_moe_experts % self.expert_parallel_size == 0
@@ -128,6 +132,13 @@ class SwitchMLP(MegatronModule):
             global_indices = max_ind
             if self.routing == 'top2':
                 global_indices_2 = max_ind_2
+        
+        # Evaluate balancing loss. Currently works only with args.routing_mode='top1'
+        if args.balancing_loss:
+            me = torch.mean(route, dim=0)
+            mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
+            ce = torch.mean(mask1.float(), dim=0)
+            self.l_aux = torch.sum(me * ce) * self.config.num_moe_experts
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
