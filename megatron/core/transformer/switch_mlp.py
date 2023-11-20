@@ -51,8 +51,8 @@ class SwitchMLP(MegatronModule):
         if args.routing_mode == 'sinkhorn':
             self.route_algo = sinkhorn
         self.router_activation = torch.sigmoid
-        if args.balancing_loss:
-            self.l_aux = None
+        # if args.balancing_loss:
+        self.l_aux = None
         self.expert_parallel_size = parallel_state.get_expert_model_parallel_world_size()
 
         assert self.config.num_moe_experts % self.expert_parallel_size == 0
@@ -134,12 +134,12 @@ class SwitchMLP(MegatronModule):
                 global_indices_2 = max_ind_2
         
         # Evaluate balancing loss. Currently works only with args.routing_mode='top1'
-        if args.balancing_loss:
-            me = torch.mean(route, dim=0)
-            mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
-            ce = torch.mean(mask1.float(), dim=0)
-            self.l_aux = torch.sum(me * ce) * self.config.num_moe_experts
-            print('COMPUTED BALANCING LOSS')
+        # if args.balancing_loss:
+        me = torch.mean(route, dim=0)
+        mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
+        ce = torch.mean(mask1.float(), dim=0)
+        self.l_aux = torch.sum(me * ce) * self.config.num_moe_experts
+        print('COMPUTED BALANCING LOSS')
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
