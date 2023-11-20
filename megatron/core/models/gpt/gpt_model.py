@@ -164,6 +164,9 @@ class GPTModel(LanguageModule):
             return logits.transpose(0, 1).contiguous()
 
         loss = self.compute_language_model_loss(labels, logits)
+        if hasattr(self.decoder, 'l_aux_tot'):
+            loss += self.decoder.l_aux_tot
+            print('ADDED L_AUX TO TOTAL LOSS')
 
         return loss
 
