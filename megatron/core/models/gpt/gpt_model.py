@@ -165,9 +165,10 @@ class GPTModel(LanguageModule):
 
         loss = self.compute_language_model_loss(labels, logits)
         print('LOSS:', loss)
-        print('LOSS SHAPE:', loss.shape)
+        print('LOSS SHAPE:', loss.shape, loss.numel())
         if hasattr(self.decoder, 'l_aux_tot'):
-            loss += self.decoder.l_aux_tot
+            denom = loss.numel()
+            loss +=  1000 * self.decoder.l_aux_tot / denom
             print('TOTAL L_AUX:', self.decoder.l_aux_tot, 'NEW TOTAL LOSS:', loss)
 
         return loss
