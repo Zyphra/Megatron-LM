@@ -49,8 +49,8 @@ class TransformerBlock(MegatronModule):
 
         self._build_layers(self.transformer_layer_spec)
 
-        if self.balancing_loss:
-            self.l_aux_tot = None
+        #if args.balancing_loss:
+        self.l_aux_tot = None
 
     def _build_layers(self, transformer_layer_spec):
         # Transformer layers.
