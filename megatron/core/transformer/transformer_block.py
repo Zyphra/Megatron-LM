@@ -49,6 +49,9 @@ class TransformerBlock(MegatronModule):
 
         self._build_layers(self.transformer_layer_spec)
 
+        if self.balancing_loss:
+            self.l_aux_tot = None
+
     def _build_layers(self, transformer_layer_spec):
         # Transformer layers.
         # @jcasper can we improve how we deal with layer_number?
@@ -250,6 +253,8 @@ class TransformerBlock(MegatronModule):
                     rotary_pos_emb=rotary_pos_emb,
                 )
             else:
+                if hasattr(self, 'l_aux_tot'):
+                    self.l_aux_tot = 0
                 for layer in self.layers:
                     hidden_states = layer(
                         hidden_states=hidden_states,
@@ -257,6 +262,9 @@ class TransformerBlock(MegatronModule):
                         rotary_pos_emb=rotary_pos_emb,
                         inference_params=inference_params,
                     )
+                    if hasattr(layer.mlp, 'l_aux') and layer.mlp.l_aux is not None:
+                        self.l_aux_tot += layer.mlp.l_aux
+                        print('ADDED L_AUX')
 
         # Final layer norm.
         if self.post_process and self.post_layer_norm:
