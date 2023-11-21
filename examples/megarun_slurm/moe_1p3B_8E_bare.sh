@@ -52,15 +52,17 @@ NNODES=8
 NODE_RANK=$current_rank
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
-CHECKPOINT_PATH=/checkpoints/megarun/ckpts_1p3b
+CHECKPOINT_PATH=/checkpoints/megarun/ckpts_1p3b_bf16
 VOCAB_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/vocab.json
 MERGE_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt
 DATA_PATH=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/train_text_document
 
 WANDB_PROJECT=moe
-WANDB_EXP_NAME=final_moe_1p3b_8e_600B_slimpj_120k
-WANDB_SAVE_DIR=/checkpoints/megarun/wandb
+WANDB_EXP_NAME=final_moe_1p3b_8e_600B_slimpj_bf16
+WANDB_SAVE_DIR=/checkpoints/megarun/wandb_bf16
 
+TOKENIZER_TYPE=HFAutoTokenizer
+TOKENIZER_MODEL="EleutherAI/gpt-neox-20b"
 
 DISTRIBUTED_ARGS="
     --nproc_per_node $GPUS_PER_NODE \
@@ -78,7 +80,7 @@ GPT_ARGS="
     --max-position-embeddings 2048 \
     --micro-batch-size 6 \
     --global-batch-size 1152 \
-    --lr 7.5e-5 \
+    --lr 0.00025 \
     --override-opt_param-scheduler \
     --train-iters 290000 \
     --lr-decay-iters 290000 \
@@ -87,7 +89,7 @@ GPT_ARGS="
     --weight-decay 0.0 \
     --lr-warmup-fraction .01 \
     --clip-grad 1.0 \
-    --fp16 \
+    --bf16 \
     --num-experts 8 \
     --expert-model-parallel-size 8 \
     --recompute-granularity selective \
@@ -110,7 +112,9 @@ DATA_ARGS="
     --merge-file $MERGE_FILE \
     --split 949,50,1 \
     --num-workers 0 \
-    --distributed-timeout-minutes 120
+    --distributed-timeout-minutes 120 \
+    --tokenizer-type $TOKENIZER_TYPE \
+    --hf_autotokenizer_model $TOKENIZER_MODEL
 "
 
 OUTPUT_ARGS="
