@@ -172,9 +172,10 @@ class GPTModel(LanguageModule):
             loss.backward(retain_graph=True)
             square_norm = sum(p.grad.norm()**2 for p in self.decoder.parameters() if p.grad is not None)
             print("Square norm of gradients:", square_norm)
-            for p in self.decoder.parameters():
-                print(p)
-                p.grad = None
+            for name, p in self.decoder.named_parameters():
+                param_shape = p.shape
+                param_norm = p.norm().item()
+                print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}")
             print('======================================')
 
         return loss
