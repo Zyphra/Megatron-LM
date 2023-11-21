@@ -164,24 +164,14 @@ class GPTModel(LanguageModule):
             return logits.transpose(0, 1).contiguous()
 
         loss = self.compute_language_model_loss(labels, logits)
-        if 1 == 0:
-            print('LOSS:', loss.sum())
-            #if hasattr(self.decoder, 'l_aux_tot'):
-            #    denom = loss.numel()
-            #    loss =  4000 * self.decoder.l_aux_tot / denom
-            #    print('TOTAL L_AUX:', self.decoder.l_aux_tot, 'NEW TOTAL LOSS:', loss.sum())
-            torch.sum(loss).backward(retain_graph=True)
-            square_norm = sum(p.grad.norm()**2 for p in self.decoder.parameters() if p.grad is not None)
-            print("Square norm of gradients:", square_norm)
-            for name, p in self.decoder.named_parameters():
-                param_shape = p.shape
-                param_norm = p.norm().item()
-                if p.grad is not None:
-                    grad_norm = p.grad.norm().item()
-                else:
-                    grad_norm = None
-                print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}")
-            print('======================================')
+        loss = 0.0
+        if hasattr(self.decoder, 'l_aux_tot'):
+            denom = loss.numel()
+            loss =  self.decoder.l_aux_tot / denom
+            print('loss1:', loss * denom)
+        print('loss2:', loss)
+        
+        print('======================================')
         return loss
 
     def shared_embedding_or_output_weight(self) -> Tensor:
