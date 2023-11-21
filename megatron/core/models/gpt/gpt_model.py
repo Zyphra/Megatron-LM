@@ -167,11 +167,8 @@ class GPTModel(LanguageModule):
         loss *= 0.0
         if hasattr(self.decoder, 'l_aux_tot'):
             denom = loss.numel()
-            loss =  self.decoder.l_aux_tot / denom
-            print('loss1:', loss * denom)
-        print('loss2:', loss)
-        
-        print('======================================')
+            loss +=  self.decoder.l_aux_tot / denom
+            
         return loss
 
     def shared_embedding_or_output_weight(self) -> Tensor:
