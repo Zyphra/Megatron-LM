@@ -44,7 +44,8 @@ class SwitchMLP(MegatronModule):
 
         self.config: TransformerConfig = config
 
-        self.router = torch.nn.Linear(self.config.hidden_size, self.config.num_moe_experts)
+        # self.router = torch.nn.Linear(self.config.hidden_size, self.config.num_moe_experts)
+        self.router = torch.nn.Linear(2, 7)
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
         self.sequence_parallel = config.sequence_parallel
@@ -88,9 +89,11 @@ class SwitchMLP(MegatronModule):
         return output
 
     def forward(self, hidden_states):
+        hidden_states = torch.randn(size=(2048*16,2))
         hidden_shape = hidden_states.shape
         route = self.router(hidden_states)
-        route = route.view(-1, self.config.num_moe_experts)
+        # route = route.view(-1, self.config.num_moe_experts)
+        route = route.view(-1, 7)
         print('hidden_states:', hidden_states)
         print('route:', route)
 
