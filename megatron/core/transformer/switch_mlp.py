@@ -47,7 +47,7 @@ class SwitchMLP(MegatronModule):
         # self.router = torch.nn.Linear(self.config.hidden_size, self.config.num_moe_experts)
         # self.router = torch.nn.Linear(2, 7)
         self.router = torch.nn.Linear(2, 1)
-        self.routerpar = torch.nn.Parameter(2,1)
+        self.routerpar = torch.nn.Parameter(torch.randn(2,1))
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
         self.sequence_parallel = config.sequence_parallel
