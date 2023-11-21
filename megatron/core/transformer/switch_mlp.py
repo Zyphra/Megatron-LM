@@ -97,11 +97,14 @@ class SwitchMLP(MegatronModule):
         for name, p in self.router.named_parameters():
             param_shape = p.shape
             param_norm = p.norm().item()
+            requires_grad = p.requires_grad
+        
             if p.grad is not None:
                 grad_norm = p.grad.norm().item()
             else:
                 grad_norm = None
-            print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}")
+        
+            print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}, Requires Grad: {requires_grad}")
 
 
         if self.routing == 'sinkhorn':
