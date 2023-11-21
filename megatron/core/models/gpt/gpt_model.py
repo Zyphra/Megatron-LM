@@ -179,7 +179,7 @@ class GPTModel(LanguageModule):
                     grad_norm = p.grad.norm().item()
                 else:
                     grad_norm = None
-                print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}")
+                # print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}")
             print('======================================')
 
         return loss
