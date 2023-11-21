@@ -91,6 +91,8 @@ class SwitchMLP(MegatronModule):
         hidden_shape = hidden_states.shape
         route = self.router(hidden_states)
         route = route.view(-1, self.config.num_moe_experts)
+        print('hidden_states:', hidden_states)
+        print('route:', route)
 
         route.sum().backward(retain_graph=True)
 
