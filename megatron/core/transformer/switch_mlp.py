@@ -90,6 +90,7 @@ class SwitchMLP(MegatronModule):
 
     def forward(self, hidden_states):
         hidden_states = torch.randn(size=(2048*16,2)).to('cuda:0')
+        hidden_states = hidden_states.to(torch.float16)
         hidden_shape = hidden_states.shape
         route = self.router(hidden_states)
         # route = route.view(-1, self.config.num_moe_experts)
