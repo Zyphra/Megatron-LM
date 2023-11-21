@@ -93,26 +93,24 @@ class SwitchMLP(MegatronModule):
         hidden_states = hidden_states.to(torch.float16)
         hidden_shape = hidden_states.shape
         route = self.router(hidden_states)
-        # route = route.view(-1, self.config.num_moe_experts)
-        route = route.view(-1, 7)
-        print('hidden_states:', hidden_states)
-        print('route:', route)
+        route = route.view(-1, self.config.num_moe_experts)
+        #route = route.view(-1, 7)
+        #print('hidden_states:', hidden_states)
+        #print('route:', route)
 
-        routesum = route.sum()
-        torch.autograd.backward(routesum)
-        # route.sum().backward(retain_graph=True)
+        #route.sum().backward(retain_graph=True)
 
-        for name, p in self.router.named_parameters():
-            param_shape = p.shape
-            param_norm = p.norm().item()
-            requires_grad = p.requires_grad
-        
-            if p.grad is not None:
-                grad_norm = p.grad.norm().item()
-            else:
-                grad_norm = None
-        
-            print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}, Requires Grad: {requires_grad}")
+        #for name, p in self.router.named_parameters():
+        #    param_shape = p.shape
+        #    param_norm = p.norm().item()
+        #    requires_grad = p.requires_grad
+        # 
+        #    if p.grad is not None:
+        #        grad_norm = p.grad.norm().item()
+        #    else:
+        #        grad_norm = None
+        #
+        #    print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}, Requires Grad: {requires_grad}")
 
 
         if self.routing == 'sinkhorn':
