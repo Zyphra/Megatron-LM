@@ -175,7 +175,11 @@ class GPTModel(LanguageModule):
             for name, p in self.decoder.named_parameters():
                 param_shape = p.shape
                 param_norm = p.norm().item()
-                print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}")
+                if p.grad is not None:
+                    grad_norm = p.grad.norm().item()
+                else:
+                    grad_norm = None
+                print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}")
             print('======================================')
 
         return loss
