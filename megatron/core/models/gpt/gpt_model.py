@@ -163,12 +163,12 @@ class GPTModel(LanguageModule):
             # [s b h] => [b s h]
             return logits.transpose(0, 1).contiguous()
 
-        loss1 = self.compute_language_model_loss(labels, logits)
-        print('SHAPE LOSS1:', loss1.shape)
-        if hasattr(self.decoder, 'l_aux_tot'):
-            denom = loss.numel()
-            loss = torch.ones_like(loss1) * self.decoder.l_aux_tot / denom
-        print('SHAPE LOSS:', loss.shape)
+        loss = self.compute_language_model_loss(labels, logits)
+        print('SHAPE LOSS1:', loss.shape)
+        #if hasattr(self.decoder, 'l_aux_tot'):
+        #    denom = loss.numel()
+        #    loss = torch.ones_like(loss1) * self.decoder.l_aux_tot / denom
+        #print('SHAPE LOSS:', loss.shape)
             
         return loss
 
