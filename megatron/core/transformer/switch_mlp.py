@@ -98,7 +98,9 @@ class SwitchMLP(MegatronModule):
         print('hidden_states:', hidden_states)
         print('route:', route)
 
-        route.sum().backward(retain_graph=True)
+        routesum = route.sum()
+        torch.autograd.backward(routesum)
+        # route.sum().backward(retain_graph=True)
 
         for name, p in self.router.named_parameters():
             param_shape = p.shape
