@@ -182,7 +182,6 @@ class GPTModel(LanguageModule):
                         grad_norm = None
                     # print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}")
                 print('======================================')
-        loss = 0.0
         return loss
 
     def shared_embedding_or_output_weight(self) -> Tensor:
