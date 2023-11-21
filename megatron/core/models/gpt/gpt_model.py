@@ -173,6 +173,7 @@ class GPTModel(LanguageModule):
             square_norm = sum(p.grad.norm()**2 for p in self.decoder.parameters() if p.grad is not None)
             print("Square norm of gradients:", square_norm)
             for p in self.decoder.parameters():
+                print(p)
                 p.grad = None
             print('======================================')
 
