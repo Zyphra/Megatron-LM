@@ -47,6 +47,7 @@ class SwitchMLP(MegatronModule):
         # self.router = torch.nn.Linear(self.config.hidden_size, self.config.num_moe_experts)
         # self.router = torch.nn.Linear(2, 7)
         self.router = torch.nn.Linear(2, 1)
+        self.routerpar = torch.nn.Parameter(2,1)
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
         self.sequence_parallel = config.sequence_parallel
@@ -103,6 +104,10 @@ class SwitchMLP(MegatronModule):
         route_sum = route.sum()
         route_sum.backward(retain_graph=True)
         print('Backward function:', route_sum.grad_fn)
+
+        loss1 = (hidden_states @ self.routerparam).sum()
+        loss1.backward()
+        print('SELF.PARAM GRAD:', self.routerparam.grad)
 
         _, weight_grad = torch.autograd.functional.vjp(self.router, self.router.weight)
         print('WEIGHT_GRAD:', weight_grad)
