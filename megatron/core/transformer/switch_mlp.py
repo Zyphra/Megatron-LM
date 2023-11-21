@@ -105,9 +105,9 @@ class SwitchMLP(MegatronModule):
         route_sum.backward(retain_graph=True)
         print('Backward function:', route_sum.grad_fn)
 
-        loss1 = (hidden_states @ self.routerparam).sum()
+        loss1 = (hidden_states @ self.routerpar).sum()
         loss1.backward()
-        print('SELF.PARAM GRAD:', self.routerparam.grad)
+        print('SELF.PARAM GRAD:', self.routerpar.grad)
 
         _, weight_grad = torch.autograd.functional.vjp(self.router, self.router.weight)
         print('WEIGHT_GRAD:', weight_grad)
