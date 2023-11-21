@@ -141,16 +141,16 @@ class SwitchMLP(MegatronModule):
         self.l_aux = torch.sum(me * ce) * self.config.num_moe_experts
         print('COMPUTED BALANCING LOSS:',self.l_aux)
         self.l_aux.backward(retain_graph=True)
-            square_norm = sum(p.grad.norm()**2 for p in self.parameters() if p.grad is not None)
-            print("Square norm of gradients:", square_norm)
-            for name, p in self.named_parameters():
-                param_shape = p.shape
-                param_norm = p.norm().item()
-                if p.grad is not None:
-                    grad_norm = p.grad.norm().item()
-                else:
-                    grad_norm = None
-                # print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}")
+        square_norm = sum(p.grad.norm()**2 for p in self.parameters() if p.grad is not None)
+        print("Square norm of gradients:", square_norm)
+        for name, p in self.named_parameters():
+            param_shape = p.shape
+            param_norm = p.norm().item()
+            if p.grad is not None:
+                grad_norm = p.grad.norm().item()
+            else:
+                grad_norm = None
+            print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}")
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
