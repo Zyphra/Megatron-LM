@@ -164,7 +164,7 @@ class GPTModel(LanguageModule):
             return logits.transpose(0, 1).contiguous()
 
         loss = self.compute_language_model_loss(labels, logits)
-        loss = 0.0
+        loss *= 0.0
         if hasattr(self.decoder, 'l_aux_tot'):
             denom = loss.numel()
             loss =  self.decoder.l_aux_tot / denom
