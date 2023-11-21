@@ -44,10 +44,7 @@ class SwitchMLP(MegatronModule):
 
         self.config: TransformerConfig = config
 
-        # self.router = torch.nn.Linear(self.config.hidden_size, self.config.num_moe_experts)
-        # self.router = torch.nn.Linear(2, 7)
-        self.router = torch.nn.Linear(2, 1)
-        self.routerpar = torch.nn.Parameter(torch.randn(2,1))
+        self.router = torch.nn.Linear(self.config.hidden_size, self.config.num_moe_experts)
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
         self.sequence_parallel = config.sequence_parallel
@@ -91,39 +88,9 @@ class SwitchMLP(MegatronModule):
         return output
 
     def forward(self, hidden_states):
-        # hidden_states = torch.randn(size=(2048*16,2)).to('cuda:0')
-        # hidden_states = hidden_states.to(torch.float16)
         hidden_shape = hidden_states.shape
         route = self.router(hidden_states)
-        #route = route.view(-1, self.config.num_moe_experts)
-        #route = route.view(-1, 7)
-        route = route.view(-1, 1)
-        #print('hidden_states:', hidden_states)
-        #print('route:', route)
-
-        route_sum = route.sum()
-        route_sum.backward(retain_graph=True)
-        print('Backward function:', route_sum.grad_fn)
-
-        loss1 = (hidden_states @ self.routerpar).sum()
-        loss1.backward()
-        print('SELF.PARAM GRAD:', self.routerpar.grad)
-
-        _, weight_grad = torch.autograd.functional.vjp(self.router, self.router.weight)
-        print('WEIGHT_GRAD:', weight_grad)
-
-        for name, p in self.router.named_parameters():
-            param_shape = p.shape
-            param_norm = p.norm().item()
-            requires_grad = p.requires_grad
-         
-            if p.grad is not None:
-                grad_norm = p.grad.norm().item()
-            else:
-                grad_norm = None
-        
-            print(f"Parameter: {name}, Shape: {param_shape}, Norm: {param_norm}, Gradient Norm: {grad_norm}, Requires Grad: {requires_grad}")
-
+        route = route.view(-1, self.config.num_moe_experts)
 
         if self.routing == 'sinkhorn':
             if self.training:
@@ -167,10 +134,10 @@ class SwitchMLP(MegatronModule):
         
         # Evaluate balancing loss. Currently works only with args.routing_mode='top1'
         # if args.balancing_loss:
-        #me = torch.mean(route, dim=0)
-        #mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
-        #ce = torch.mean(mask1.float(), dim=0)
-        #self.l_aux = torch.sum(me * ce) * self.config.num_moe_experts
+        me = torch.mean(route, dim=0)
+        mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
+        ce = torch.mean(mask1.float(), dim=0)
+        self.l_aux = torch.sum(me * ce) * self.config.num_moe_experts
         #print('COMPUTED BALANCING LOSS:',self.l_aux)
         #self.l_aux.backward(retain_graph=True)
         #square_norm = sum(p.grad.norm()**2 for p in self.parameters() if p.grad is not None)
