@@ -167,7 +167,7 @@ class GPTModel(LanguageModule):
         print('LOSS:', loss.sum())
         if hasattr(self.decoder, 'l_aux_tot'):
             denom = loss.numel()
-            loss +=  000 * self.decoder.l_aux_tot / denom
+            loss =  4000 * self.decoder.l_aux_tot / denom
             print('TOTAL L_AUX:', self.decoder.l_aux_tot, 'NEW TOTAL LOSS:', loss.sum())
 
         return loss
