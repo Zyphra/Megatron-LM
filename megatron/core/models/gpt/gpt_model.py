@@ -169,8 +169,11 @@ class GPTModel(LanguageModule):
             denom = loss.numel()
             loss =  4000 * self.decoder.l_aux_tot / denom
             print('TOTAL L_AUX:', self.decoder.l_aux_tot, 'NEW TOTAL LOSS:', loss.sum())
-            print("loss.requires_grad:", loss.requires_grad)
-            print("loss is part of a computation graph:", loss.grad_fn is not None)
+            loss.backward()
+            square_norm = sum(p.grad.norm()**2 for p in self.decoder.parameters() if p.grad is not None)
+            print("Square norm of gradients:", square_norm)
+            for p in self.decoder.parameters():
+                p.grad = None
             print('======================================')
 
         return loss
