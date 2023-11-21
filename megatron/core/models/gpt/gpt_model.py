@@ -165,9 +165,10 @@ class GPTModel(LanguageModule):
 
         loss = self.compute_language_model_loss(labels, logits)
         print('SHAPE LOSS1:', loss.shape)
-        #if hasattr(self.decoder, 'l_aux_tot'):
-        #    denom = loss.numel()
-        #    loss = torch.ones_like(loss1) * self.decoder.l_aux_tot / denom
+        loss = 0
+        if hasattr(self.decoder, 'l_aux_tot'):
+            # denom = loss.numel()
+            loss = self.decoder.l_aux_tot
         #print('SHAPE LOSS:', loss.shape)
             
         return loss
