@@ -72,7 +72,7 @@ The default expert routing algorithm is sinkhorn ([Clark et al., ICML 2022](http
 
  ### Performance Analysis of Routing Algorithms
 
- To investigate the performance of various routing algorithms, our framework allows to save to a file the token distribution across experts. To capture the token distribution, modify the script located at `/opt/Megatron-LM/examples/pretrain_gpt_distributed.sh` by including the `--router-profiling-interval n` flag in `OUTPUT_ARGS`, where `n` is an integer. This will save the token distribution every `n` iterations. If this flag is omitted, no output file will be generated. Specify the file path for saving the token distribution data using the `--router-profiling-path` flag. The output will be saved in a file named `token_counts.pkl`.
+ To investigate the performance of various routing algorithms, our framework allows to save to a file the token distribution across experts. To capture the token distribution, modify the script located at `examples/pretrain_gpt_distributed.sh` by including the `--router-profiling-interval n` flag in `OUTPUT_ARGS`, where `n` is an integer. This will save the token distribution every `n` iterations. If this flag is omitted, no output file will be generated. Specify the file path for saving the token distribution data using the `--router-profiling-path` flag. The output will be saved in a file named `token_counts.pkl`.
 
  For visual analysis, you can generate plots from the token distribution data. Use the `plot_token_counts.py` script as in the following example:
  
