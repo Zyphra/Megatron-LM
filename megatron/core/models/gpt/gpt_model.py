@@ -164,6 +164,7 @@ class GPTModel(LanguageModule):
             return logits.transpose(0, 1).contiguous()
 
         loss = self.compute_language_model_loss(labels, logits)
+        print(args.testingthis)
 
         return loss
 
