@@ -6,8 +6,6 @@ from typing import Literal, Optional, Union
 import torch
 from torch import Tensor
 
-from megatron import get_args
-
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.models.common.embeddings.language_module.language_module import LanguageModule
@@ -166,8 +164,6 @@ class GPTModel(LanguageModule):
             return logits.transpose(0, 1).contiguous()
 
         loss = self.compute_language_model_loss(labels, logits)
-        args = get_args()
-        print(args.testingthis)
 
         return loss
 
