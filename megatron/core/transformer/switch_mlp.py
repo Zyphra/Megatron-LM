@@ -93,6 +93,7 @@ class SwitchMLP(MegatronModule):
 
     def forward(self, hidden_states):
         args = get_args()
+        args.testingthis = 'TESTING IF THIS IS SAVED'
         hidden_shape = hidden_states.shape
         route = self.router(hidden_states)
         route = route.view(-1, self.config.num_moe_experts)
