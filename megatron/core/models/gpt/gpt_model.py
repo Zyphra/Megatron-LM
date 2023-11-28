@@ -15,6 +15,7 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_block import TransformerBlock
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import make_tp_sharded_tensor_for_checkpoint
+from megatron import get_args
 
 
 class GPTModel(LanguageModule):
@@ -162,14 +163,12 @@ class GPTModel(LanguageModule):
         if labels is None:
             # [s b h] => [b s h]
             return logits.transpose(0, 1).contiguous()
-
-        loss = self.compute_language_model_loss(labels, logits)
-        print('SHAPE LOSS1:', loss.shape)
-        loss = 0
-        if hasattr(self.decoder, 'l_aux_tot'):
-            # denom = loss.numel()
+        
+        args = get_args()
+        if args.curr_iteration % 2 == 0:
+            loss = self.compute_language_model_loss(labels, logits)
+        else:
             loss = self.decoder.l_aux_tot
-        #print('SHAPE LOSS:', loss.shape)
             
         return loss
 
