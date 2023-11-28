@@ -264,7 +264,6 @@ class TransformerBlock(MegatronModule):
                     )
                     if hasattr(layer.mlp, 'l_aux') and layer.mlp.l_aux is not None:
                         self.l_aux_tot += layer.mlp.l_aux
-                        print('CUMULATIVE SUM OF L_AUX:', self.l_aux_tot)
 
         # Final layer norm.
         if self.post_process and self.post_layer_norm:
