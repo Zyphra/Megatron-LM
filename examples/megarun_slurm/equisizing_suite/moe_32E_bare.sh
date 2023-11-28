@@ -11,14 +11,14 @@ name2ip[GPU627A]=172.18.135.17
 name2ip[GPU6282]=172.18.135.18
 
 declare -A rank
-rank[GPU6268]=1
-rank[GPU6292]=2
-rank[GPU626E]=3
-rank[GPU6284]=4
-rank[GPUC194]=5
-rank[GPU6278]=6
+#rank[GPU6268]=1
+#rank[GPU6292]=2
+#rank[GPU626E]=3
+#rank[GPU6284]=4
+#rank[GPUC194]=5
+rank[GPU6278]=1
 rank[GPU627A]=0
-rank[GPU6282]=7
+#rank[GPU6282]=7
 
 current_node=$(hostname)
 current_rank=${rank[$current_node]}
@@ -47,8 +47,9 @@ export WANDB_API_KEY=6f0443d34d41df289b878635a247d89381c06271
 GPUS_PER_NODE=8
 # Change for multinode config
 export MASTER_ADDR=${name2ip[$master_node]}
+#export MASTER_ADDR=localhost
 export MASTER_PORT=6000
-NNODES=8
+NNODES=2
 NODE_RANK=$current_rank
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
@@ -56,6 +57,7 @@ CHECKPOINT_PATH=/checkpoints/megarun/ckpts_1p3b_bf16
 VOCAB_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/vocab.json
 MERGE_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt
 DATA_PATH=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/train_text_document
+EXPERT_STATS_PATH=/checkpoints/equiparameter/32e
 
 WANDB_PROJECT=moe
 WANDB_EXP_NAME=final_moe_1p3b_8e_600B_slimpj_bf16
@@ -124,10 +126,11 @@ OUTPUT_ARGS="
     --eval-iters 50 \
     --wandb-project $WANDB_PROJECT \
     --wandb-exp-name $WANDB_EXP_NAME \
-    --wandb-save-dir $WANDB_SAVE_DIR
+    --wandb-save-dir $WANDB_SAVE_DIR \
+    --router-profiling-path $EXPERT_STATS_PATH
 "
 
-pip list
+#pip list
 
 torchrun $DISTRIBUTED_ARGS /opt/Megatron-LM/pretrain_gpt.py \
     $GPT_ARGS \

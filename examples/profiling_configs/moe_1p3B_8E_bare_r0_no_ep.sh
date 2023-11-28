@@ -1,68 +1,31 @@
 #!/bin/bash
 
-declare -A name2ip
-name2ip[GPU6268]=172.18.135.11
-name2ip[GPU6292]=172.18.135.12
-name2ip[GPU626E]=172.18.135.13
-name2ip[GPU6284]=172.18.135.14
-name2ip[GPUC194]=172.18.135.15
-name2ip[GPU6278]=172.18.135.16
-name2ip[GPU627A]=172.18.135.17
-name2ip[GPU6282]=172.18.135.18
-
-declare -A rank
-rank[GPU6268]=1
-rank[GPU6292]=2
-rank[GPU626E]=3
-rank[GPU6284]=4
-rank[GPUC194]=5
-rank[GPU6278]=6
-rank[GPU627A]=0
-rank[GPU6282]=7
-
-current_node=$(hostname)
-current_rank=${rank[$current_node]}
-
-master_node=NOT_FOUND
-for k in "${!rank[@]}"; do
-    if [ ${rank[$k]} = 0 ]; then
-        master_node="$k"
-    fi
-done
-if [ $master_node = NOT_FOUND ]; then
-    echo "Must specify rank 0 node!"
-    exit 1
-fi
-echo "Current node: $current_node. Current rank: $current_rank. Master node: $master_node. Master address: ${name2ip[$master_node]}"
-
 # Runs the "345M" parameter model
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
-export TP_SOCKET_IFNAME=ibs108
-export GLOO_SOCKET_IFNAME=ibs108
+#export TP_SOCKET_IFNAME=ibs108
+#export GLOO_SOCKET_IFNAME=ibs108
 
 export WANDB_API_KEY=6f0443d34d41df289b878635a247d89381c06271
 #export NCCL_DEBUG=INFO
 
 GPUS_PER_NODE=8
 # Change for multinode config
-export MASTER_ADDR=${name2ip[$master_node]}
+export MASTER_ADDR=localhost
 export MASTER_PORT=6000
-NNODES=8
-NODE_RANK=$current_rank
+NNODES=1
+NODE_RANK=0
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
-CHECKPOINT_PATH=/checkpoints/megarun/ckpts_1p3b_bf16
+CHECKPOINT_PATH=/workspace/qanthony/ckpts_1p3b_profiling
 VOCAB_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/vocab.json
 MERGE_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt
 DATA_PATH=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/train_text_document
 
 WANDB_PROJECT=moe
-WANDB_EXP_NAME=final_moe_1p3b_8e_600B_slimpj_bf16
-WANDB_SAVE_DIR=/checkpoints/megarun/wandb_bf16
+WANDB_EXP_NAME=profiling
+WANDB_SAVE_DIR=/workspace/qanthony/wandb
 
-TOKENIZER_TYPE=HFAutoTokenizer
-TOKENIZER_MODEL="EleutherAI/gpt-neox-20b"
 
 DISTRIBUTED_ARGS="
     --nproc_per_node $GPUS_PER_NODE \
@@ -81,26 +44,25 @@ GPT_ARGS="
     --micro-batch-size 6 \
     --global-batch-size 1152 \
     --lr 0.00025 \
-    --override-opt_param-scheduler \
     --train-iters 290000 \
     --lr-decay-iters 290000 \
     --lr-decay-style cosine \
-    --min-lr 1.0e-6 \
+    --min-lr 1.0e-5 \
     --weight-decay 0.0 \
     --lr-warmup-fraction .01 \
     --clip-grad 1.0 \
-    --bf16 \
+    --fp16 \
     --num-experts 8 \
-    --expert-model-parallel-size 8 \
+    --expert-model-parallel-size 1 \
     --recompute-granularity selective \
     --use-flash-attn \
     --accumulate-allreduce-grads-in-fp32 \
     --attention-dropout 0.0 \
     --hidden-dropout 0.0 \
     --swiglu \
+    --adam-beta2 0.95
     --position-embedding-type rope \
     --use-rotary-position-embeddings \
-    --adam-beta2 0.95
     "
     #--fp8-format hybrid \
     #--transformer-impl transformer_engine 
@@ -112,9 +74,7 @@ DATA_ARGS="
     --merge-file $MERGE_FILE \
     --split 949,50,1 \
     --num-workers 0 \
-    --distributed-timeout-minutes 120 \
-    --tokenizer-type $TOKENIZER_TYPE \
-    --hf_autotokenizer_model $TOKENIZER_MODEL
+    --distributed-timeout-minutes 120
 "
 
 OUTPUT_ARGS="
@@ -124,12 +84,11 @@ OUTPUT_ARGS="
     --eval-iters 50 \
     --wandb-project $WANDB_PROJECT \
     --wandb-exp-name $WANDB_EXP_NAME \
-    --wandb-save-dir $WANDB_SAVE_DIR
+    --wandb-save-dir $WANDB_SAVE_DIR \
+    --profile
 "
 
-pip list
-
-torchrun $DISTRIBUTED_ARGS /opt/Megatron-LM/pretrain_gpt.py \
+nsys profile -s none -t nvtx,cuda -o /workspace/nsys/noep --force-overwrite true --capture-range=cudaProfilerApi --capture-range-end=stop torchrun $DISTRIBUTED_ARGS /opt/Megatron-LM/pretrain_gpt.py \
     $GPT_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
