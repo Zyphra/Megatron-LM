@@ -3,6 +3,7 @@
 import torch
 import pickle
 import os
+import torch.nn.functional as F
 
 from megatron import get_args
 from megatron.core import parallel_state, tensor_parallel
