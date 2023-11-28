@@ -5,22 +5,22 @@ Guide for running multi-node training using our Docker image: https://zyphra.atl
 
 Guide for doing experimental/development run on a single node inside Docker container:
 
-## Spin up Docker Container
+## Spin Up Docker Container
 
  Set up your user folder on the node
 ```mkdir ~/<your-user-folder>```
 
-### Login to dockerhub
+### Login to Dockerhub
 
 ```docker login```
 
 Input the username and password.
 
-### Pull our image (only necessary once per node)
+### Pull Our Image (only necessary once per node)
  
 ```docker pull zyphra/megatron:latest```
 
-### Start the container
+### Start the Container
 Spin up the container with 1.8TB of shared memory, all GPUs, and two mounted folders. One for node-local work in ```~/<your-user-folder>/workspace``` and one to load shared datasets at ```/mnt/shared/datasets```:
  
 ```docker run --privileged --shm-size=1800gb --gpus all -it --rm -v <path to your local workspace folder>:/workspace -v /mnt/shared/datasets:/datasets zyphra/megatron:latest```
@@ -32,7 +32,7 @@ The Megatron LM installation will be installed in ```/opt/Megatron-LM``` inside 
 ### Launch Training
 `bash /opt/Megatron-LM/examples/pretrain_gpt_distributed.sh`
 
-# Infinite learning rate schedule
+## Infinite Learning Rate Schedule
 
 We have implemented an 'infinite learning rate schedule' that integrates warm-up, followed by an inverse square root cooldown, a constant phase, and finally an exponential decay. To configure this schedule, modify the script located at ```/opt/Megatron-LM/examples/pretrain_gpt_distributed.sh```. Example values for the relevant flags that you need to set are:
 
@@ -65,6 +65,29 @@ Note: The last five flags are necessary only when ```--lr-decay-style invsqrt-in
 The schedule looks like this:
 
 <img src="images/lr_sched.png" alt="Infinite LR schedule" width="50%">
+
+## Expert Routing 
+
+The default expert routing algorithm is sinkhorn ([Clark et al., ICML 2022](https://proceedings.mlr.press/v162/clark22a.html)). To choose the routing algorithm, in ```/opt/Megatron-LM/examples/pretrain_gpt_distributed.sh``` include the flag `--routing-mode` in `GPT_ARGS` with options `sinkhorn`, `top1`, or `top2`. See [Fedus et al. 2022](https://arxiv.org/abs/2209.01667) for an overview and references on expert routing algorithms. Currently, `top1` and `top2` choices do not keep balancing into account, i.e. it is possible that different experts will receive disproportionately more tokens than others, which is far from compute-optimal.
+
+ ### Performance Analysis of Routing Algorithms
+
+ To investigate the performance of various routing algorithms, our framework allows to save to a file the token distribution across experts. To capture the token distribution, modify the script located at `examples/pretrain_gpt_distributed.sh` by including the `--router-profiling-interval n` flag in `OUTPUT_ARGS`, where `n` is an integer. This will save the token distribution every `n` iterations. If this flag is omitted, no output file will be generated. Specify the file path for saving the token distribution data using the `--router-profiling-path` flag. The output will be saved in a file named `token_counts.pkl`.
+
+ For visual analysis, you can generate plots from the token distribution data. Use the `plot_token_counts.py` script as in the following example:
+ 
+ `python plot_token_counts.py expert_stats/token_counts.pkl 4 expert_stats/token_count.png`
+ 
+where 
+* `expert_stats/token_counts.pkl` is the input file
+* `4` represents the layer number of the experts we wish to analyze
+* `expert_stats/token_count.png` is the output image file
+
+If `--routing-mode` is set to `sinkhorn` or `top1`, a single plot will be generated. For `top2` routing mode, two plots will be created, representing the largest and second-largest probabilities. 
+
+A sample plot for `top2` routing mode (obtained from a tiny toy model) is:
+
+<img src="images/token_count.png" alt="Token Counts" width="70%">
 
 # NVIDIA Megatron-LM (copied from upstream)
 

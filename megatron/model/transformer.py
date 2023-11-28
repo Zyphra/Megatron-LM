@@ -7,6 +7,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from typing import Optional
+import pickle
+import os
 
 from megatron import get_timers, get_args, get_retro_args, core, get_num_microbatches
 from .module import MegatronModule
@@ -166,11 +168,16 @@ def sinkhorn(cost, tol=0.0001):
         d1_old = d1
     return d1*cost*d0.unsqueeze(1)
 
+def save_token_count(token_count, layer, iteration, router_profiling_path):
+    token_count_list = token_count.cpu().tolist()    
+    with open(os.path.join(router_profiling_path, 'token_counts.pkl'), 'ab') as file:
+        pickle.dump([iteration, layer, token_count_list], file)
+
 class SwitchMLP(MegatronModule):
     """
     Routes input to one of N MLP "experts"
     """
-    def __init__(self, config):
+    def __init__(self, config, layer=None):
         super(SwitchMLP, self).__init__()
         args = get_args()
         self.router = torch.nn.Linear(args.hidden_size, args.num_experts)
@@ -178,6 +185,8 @@ class SwitchMLP(MegatronModule):
         self.sequence_parallel = config.sequence_parallel
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
+        self.layer = layer
+        self.router_profiling_interval = args.router_profiling_interval
 
         assert args.num_experts % self.expert_parallel_size == 0
         self.num_local_experts = args.num_experts // self.expert_parallel_size
@@ -255,6 +264,15 @@ class SwitchMLP(MegatronModule):
             global_indices = max_ind
             if self.routing == 'top2':
                 global_indices_2 = max_ind_2
+
+        # Collect token count for each expert and save to file
+        if self.router_profiling_interval and (args.curr_iteration % self.router_profiling_interval == 0) and args.curr_iteration > 0:        
+            if self.routing == 'sinkhorn' or self.routing == 'top1':
+                token_count = torch.bincount(global_indices, minlength=args.num_experts)
+            if self.routing == 'top2':
+                token_count = torch.stack([torch.bincount(global_indices, minlength=args.num_experts),
+                                           torch.bincount(global_indices_2, minlength=args.num_experts)])
+            save_token_count(token_count, self.layer, args.curr_iteration, args.router_profiling_path)
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2':
@@ -936,7 +954,7 @@ class ParallelTransformerLayer(MegatronModule):
 
         # MLP
         if args.num_experts is not None:
-            self.mlp = SwitchMLP(config)
+            self.mlp = SwitchMLP(config, layer_number)
         else:
             self.mlp = ParallelMLP(config)
 

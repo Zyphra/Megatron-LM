@@ -13,6 +13,7 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import make_viewless_tensor
+from megatron.core.transformer.switch_mlp import SwitchMLP
 
 
 @dataclass
@@ -104,7 +105,10 @@ class TransformerLayer(MegatronModule):
         ## [Module 8: MLP block]
         # TODO how to set the gpt_layer_spec.py when we have moe_frequency > 1,
         #      where MLP and SwitchMLP both appear alternately?
-        self.mlp = build_module(submodules.mlp, config=self.config)
+        if submodules.mlp.module == SwitchMLP:
+            self.mlp = build_module(submodules.mlp, config=self.config, layer=layer_number)
+        else:
+            self.mlp = build_module(submodules.mlp, config=self.config)
 
         ## [Module 9: BiasDropoutFusion]
         self.mlp_bda = build_module(submodules.mlp_bda)
