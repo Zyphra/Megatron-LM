@@ -16,6 +16,7 @@ CHECKPOINT_PATH=/workspace/ckpts
 VOCAB_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/vocab.json
 MERGE_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt
 DATA_PATH=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/train_text_document
+EXPERT_STATS_PATH=/workspace/expert_stats
 
 WANDB_PROJECT=moe
 WANDB_EXP_NAME=moe_1p3b_16e_slimpj_test
@@ -74,7 +75,8 @@ OUTPUT_ARGS="
     --eval-iters 10 \
     --wandb-project $WANDB_PROJECT \
     --wandb-exp-name $WANDB_EXP_NAME \
-    --wandb-save-dir $WANDB_SAVE_DIR
+    --wandb-save-dir $WANDB_SAVE_DIR \
+    --router-profiling-path $EXPERT_STATS_PATH \
 "
 
 torchrun $DISTRIBUTED_ARGS /workspace/Megatron-LM/pretrain_gpt.py \
