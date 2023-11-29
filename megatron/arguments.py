@@ -1041,6 +1041,8 @@ def _add_checkpointing_args(parser):
                        help="If '--load' is set, but checkpoint is not found "
                        "(e.g., path typo), then exit instead of random "
                        "initialization.")
+    group.add_argument('--enable-manual-profiling', action='store_true',
+                       help="Profile through NVIDIA Nsight Systems.")
 
     return parser
 
