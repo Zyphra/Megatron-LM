@@ -146,7 +146,8 @@ class GPTModel(LanguageModule):
         # Run decoder.
         if labels is not None:
             args = get_args()
-            args.l_aux = 0.0
+            if args.use_balancing_loss:
+                args.l_aux = 0.0
         hidden_states = self.decoder(
             hidden_states=decoder_input,
             attention_mask=attention_mask,
@@ -167,10 +168,9 @@ class GPTModel(LanguageModule):
             # [s b h] => [b s h]
             return logits.transpose(0, 1).contiguous()
 
-        if args.curr_iteration % 2 == 0:
-            loss = self.compute_language_model_loss(labels, logits)
-        else:
-            loss = args.l_aux
+        loss = self.compute_language_model_loss(labels, logits)
+        if args.use_balancing_loss:
+            loss += args.l_aux
 
         return loss
 
