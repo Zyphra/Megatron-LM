@@ -180,8 +180,10 @@ def forward_step(data_iterator, model: GPTModel):
     timers('batch-generator').stop()
     if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
 
+    if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Forward pass")
     output_tensor = model(tokens, position_ids, attention_mask,
                           labels=labels)
+    if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
 
     return output_tensor, partial(loss_func, loss_mask)
 
