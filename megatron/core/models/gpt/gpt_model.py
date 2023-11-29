@@ -15,6 +15,7 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_block import TransformerBlock
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import make_tp_sharded_tensor_for_checkpoint
+from megatron import get_args
 
 
 class GPTModel(LanguageModule):
@@ -143,6 +144,9 @@ class GPTModel(LanguageModule):
             rotary_pos_emb = self.rotary_pos_emb(rotary_seq_len)
 
         # Run decoder.
+        if labels is not None:
+            args = get_args()
+            args.l_aux = 0.0
         hidden_states = self.decoder(
             hidden_states=decoder_input,
             attention_mask=attention_mask,
@@ -163,7 +167,10 @@ class GPTModel(LanguageModule):
             # [s b h] => [b s h]
             return logits.transpose(0, 1).contiguous()
 
-        loss = self.compute_language_model_loss(labels, logits)
+        if args.curr_iteration % 2 == 0:
+            loss = self.compute_language_model_loss(labels, logits)
+        else:
+            loss = args.l_aux
 
         return loss
 
