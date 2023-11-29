@@ -139,13 +139,13 @@ class SwitchMLP(MegatronModule):
             if self.routing == 'top2':
                 global_indices_2 = max_ind_2
 
-        # Evaluate balancing loss. Currently works only with args.routing_mode='top1'
-        # if args.balancing_loss:
-        if hasattr(args, 'l_aux'):
-            me = torch.mean(route, dim=0)
-            mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
-            ce = torch.mean(mask1.float(), dim=0)
-            args.l_aux += torch.sum(me * ce) * self.config.num_moe_experts
+        # Evaluate balancing loss.
+        if args.balancing_loss:
+            if hasattr(args, 'l_aux'):
+                me = torch.mean(route, dim=0)
+                mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
+                ce = torch.mean(mask1.float(), dim=0)
+                args.l_aux += torch.sum(me * ce) * self.config.num_moe_experts
 
         # Collect token count for each expert and save to file
         if self.router_profiling_interval and (args.curr_iteration % self.router_profiling_interval == 0) and args.curr_iteration > 0:        
