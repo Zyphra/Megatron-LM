@@ -92,7 +92,7 @@ def initialize_megatron(
            _initialize_tp_communicators()
 
     dir_path = os.path.join(args.router_profiling_path)
-    if not os.path.exists(dir_path) and torch.distributed.get_rank() == 0:
+    if not os.path.exists(dir_path) and torch.distributed.get_rank() == 0 and dir_path is not None:
         os.makedirs(dir_path)
 
         # No continuation function
