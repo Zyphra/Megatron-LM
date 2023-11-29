@@ -91,9 +91,10 @@ def initialize_megatron(
         if args.tp_comm_overlap:
            _initialize_tp_communicators()
 
-    dir_path = os.path.join(args.router_profiling_path)
-    if not os.path.exists(dir_path) and torch.distributed.get_rank() == 0:
-        os.makedirs(dir_path)
+    if args.router_profiling_path is not None and torch.distributed.get_rank() == 0:
+        dir_path = os.path.join(args.router_profiling_path)
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
 
         # No continuation function
         return None
