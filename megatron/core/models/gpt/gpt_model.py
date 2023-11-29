@@ -171,7 +171,10 @@ class GPTModel(LanguageModule):
         if args.curr_iteration % 2 == 0:
             loss = self.compute_language_model_loss(labels, logits)
         else:
-            loss = args.l_aux
+            if args.use_balancing_loss:
+                loss = args.l_aux
+            else:
+                loss = self.compute_language_model_loss(labels, logits)
         # if args.use_balancing_loss:
         #    loss += 0.1*args.l_aux
 
