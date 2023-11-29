@@ -212,8 +212,7 @@ class SwitchMLP(MegatronModule):
                     output_bias_total_2 / parallel_state.get_tensor_model_parallel_world_size()
                 )
 
-        output_total = output_total 
-        # * max_prob
+        output_total = output_total * max_prob
         if self.routing == 'top2':
             output_total_2 = output_total_2*max_prob_2
             output_total = output_total + output_total_2
