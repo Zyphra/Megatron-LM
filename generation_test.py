@@ -31,13 +31,8 @@ os.environ["MASTER_PORT"] = "6000"
 config_path = "/opt/Megatron-LM/examples/megarun_slurm/moe_1p3B_8E_bare.sh"
 #config_path = "/opt/Megatron-LM/examples/moe_1p3B_8E_bare_r0.sh"
 
-
-
-
 with open(config_path,"r") as f:
     filestr = f.read()
-    
-#print(file_str)
 
 def extract_keyword_args(filestr, keyword):
     gpt_split = filestr.split(keyword)
@@ -50,15 +45,9 @@ def extract_keyword_args(filestr, keyword):
     return gpt_args.strip().split(" ")
 print(extract_keyword_args(filestr, "GPT_ARGS"))
 
-#VOCAB_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/vocab.json
-#MERGE_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt
-#DATA_PATH=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/train_text_document
-
 def extract_data_paths(filestr):
     vocab_file = filestr.split("VOCAB_FILE=")[1].split("\n")[0]
     merge_file = filestr.split("MERGE_FILE=")[1].split("\n")[0]
-    #vocab_file = "/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/vocab.json"
-    #merge_file = "/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt"
     #checkpoint_path = "/workspace/ckpts_bf16_125m"
     checkpoint_path = "/checkpoints/megarun/ckpts_1p3b_bf16"
     #checkpoint_path = "/checkpoints/megarun/ckpts_1p3B"
@@ -72,8 +61,6 @@ print(extract_data_paths(filestr))
 sys.argv = ["generation_test.py"] # a hack to get around the jupyter issues in the sys.argc which we are messing with
 sys.argv += extract_keyword_args(filestr, "GPT_ARGS")
 sys.argv += extract_data_paths(filestr)
-print(sys.argv)
-#sys.argv += extract_keyword_args(filestr, "DATA_ARGS")
 
 def model_provider(pre_process=True, post_process=True):
     """Build the model."""
@@ -99,15 +86,11 @@ initialize_megatron(extra_args_provider=add_text_generate_args,
                                     'no_load_rng': True,
                                     'no_load_optim': True})
 
-if torch.distributed.get_rank() == 0:
-    print("WE ARE RANK 0!")
 
 
-# 'tokenizer_type': 'GPT2BPETokenizer'
-#'tokenizer_type': 'HFAutoTokenizer',
-#                                    'hf_autotokenizer_model': 'EleutherAI/gpt-neox-20b',
+
+
 args = get_args()
-print("ARGS: ", args)
 
 model = get_model(model_provider, wrap_with_ddp=False)
 _ = load_checkpoint(model, None, None)
@@ -115,7 +98,6 @@ assert len(model) == 1, "Above condition should have caught this"
 model = model[0]
 
 def model_generate(prompt, num_tokens, temperature):
-    print("INSIDE GENERATE")
     prompts = [str(prompt)]
     tokens_to_generate = num_tokens
     logprobs = True
@@ -129,8 +111,6 @@ def model_generate(prompt, num_tokens, temperature):
     stop_on_eol = False
     random_seed = -1
     prevent_newline_after_colon = False
-    print("SENDING TO GENERATE")
-    #print("MODEL: ", model)
 
     response, response_seg, response_logprobs, _ = \
         generate_and_post_process(
@@ -149,7 +129,6 @@ def model_generate(prompt, num_tokens, temperature):
         stop_on_eol=stop_on_eol,
         prevent_newline_after_colon=prevent_newline_after_colon,
         random_seed=random_seed)
-    print("RESPNOSE RECEIVED")
     return response
 
 
