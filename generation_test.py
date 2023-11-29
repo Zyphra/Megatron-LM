@@ -152,13 +152,8 @@ def model_generate(prompt, num_tokens, temperature):
     print("RESPNOSE RECEIVED")
     return response
 
-#if torch.distributed.get_rank() == 0:
-#response = model_generate(">>> Python 3.10", 100, 1.0)
-#print("RESPONSE : ", response)
-#exit()
-#exit()
-# SERVER
 
+### START SERVER ###
 PORT = 5000
 
 if mpu.is_pipeline_first_stage() and mpu.get_tensor_model_parallel_rank() == 0 and torch.distributed.get_rank() == 0:
@@ -179,52 +174,3 @@ while True:
         except ValueError as ve:
             pass
 
-
-
-FLASK = False
-INTERACTIVE = False
-
-if FLASK:
-    if torch.distributed.get_rank() == 0:
-        # only run the flask server on rank 0
-        app = Flask(__name__)
-
-        @app.route('/')
-        def home():
-            return "Hello, World!"
-
-        @app.route('/generate', methods = ['POST'])
-        def generate_text():
-            print("IN GENERATE TEXT")
-            data = request.get_json()
-            prompt = data['prompt']
-            temperature = data.get('temperature', 1.0)
-            num_tokens = data.get('num_tokens', 100)
-            print("PARSED RESPONSE: ", prompt, temperature, num_tokens)
-            
-
-            response = generate(prompt, num_tokens, temperature)
-            
-            return jsonify({'output': output})
-
-
-        app.run(debug=True)
-        
-        
-if INTERACTIVE:
-    print_rank_0("Welcome to interactive program. Type 'quit' to exit.")
-    while True:
-        user_input = input("> ")
-        print("USER INPUT: " + str(user_input))
-        num_tokens = 100
-        temperature = 1.0
-        if user_input.lower() == ":q":
-            break
-        elif ":tokens" in user_input.lower():
-            splits = user_input.lower().split(" ")
-            num_tokens = int(splits[1])
-            
-        else: 
-            print("SENDING TO MODEL")
-            response = model_generate(user_input, num_tokens, temperature )
-            print(f"Processed response: {response}")
