@@ -184,7 +184,7 @@ class SwitchMLP(MegatronModule):
         self.expert_parallel_size = mpu.get_expert_model_parallel_world_size()
         self.sequence_parallel = config.sequence_parallel
         self.add_bias = config.add_bias_linear
-        self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2'
+        self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2', 'sinkhorn_top2'
         self.layer = layer
         self.router_profiling_interval = args.router_profiling_interval
 
@@ -225,28 +225,41 @@ class SwitchMLP(MegatronModule):
         route = self.router(hidden_states).view(-1, args.num_experts)
         
 
-        if self.routing == 'sinkhorn':
+        if self.routing == 'sinkhorn' or self.routing == 'sinkhorn_top2':
             if self.training:
                 with torch.no_grad():
                     sinkroute = sinkhorn(route.detach().to(dtype=torch.float32))
                     _, max_ind = torch.max(sinkroute, dim=1)
                 route = torch.sigmoid(route)
                 max_prob = route[torch.arange(route.size(0)), max_ind]
+                if self.routing == 'sinkhorn_top2':
+                    masked_route = sinkroute.clone()
+                    mask = torch.arange(sinkroute.shape[1], device=sinkroute.device).unsqueeze(0) == max_ind.unsqueeze(1)
+                    masked_route[mask] = - float('inf')
+                    _, max_ind_2 = torch.max(masked_route, dim=1)
+                    max_prob_2 = route[torch.arange(route.size(0)), max_ind_2]
             else:
                route = torch.sigmoid(route)
                max_prob, max_ind = torch.max(route, dim=1)
+               if self.routing == 'sinkhorn_top2':
+                   masked_route = route.clone()
+                   mask = torch.arange(route.shape[1], device=route.device).unsqueeze(0) == max_ind.unsqueeze(1)
+                   masked_route[mask] = - float('inf')
+                   max_prob_2, max_ind_2 = torch.max(masked_route, dim=1)
 
         else:
            route = torch.softmax(route, dim=1)
            max_prob, max_ind = torch.max(route, dim=1)
            if self.routing == 'top2':
-               masked_route = route.masked_fill(route == max_prob.unsqueeze(1), -float('inf'))
+               masked_route = route.clone()
+               mask = torch.arange(route.shape[1], device=route.device).unsqueeze(0) == max_ind.unsqueeze(1)
+               masked_route[mask] = 0.0
                max_prob_2, max_ind_2 = torch.max(masked_route, dim=1)
 
                      
         
         max_prob = torch.unsqueeze(max_prob, 1)
-        if self.routing == 'top2':
+        if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
             max_prob_2 = torch.unsqueeze(max_prob_2, 1)
         hidden_states = hidden_states.view(-1, hidden_states.size(2))
 
@@ -257,13 +270,26 @@ class SwitchMLP(MegatronModule):
             global_hidden_states = \
                 gather_from_sequence_parallel_region_to_moe(hidden_states)
             global_indices = self.gather_indices(max_ind)
-            if self.routing == 'top2':
+            if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 global_indices_2 = self.gather_indices(max_ind_2)
         else:
             global_hidden_states = hidden_states
             global_indices = max_ind
-            if self.routing == 'top2':
+            if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 global_indices_2 = max_ind_2
+
+        # Evaluate balancing loss.
+        if args.use_balancing_loss and self.training:
+            if hasattr(args, 'l_aux'):
+                me = torch.mean(route, dim=0)
+                mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
+                ce = torch.mean(mask1.float(), dim=0)
+                args.l_aux += torch.sum(me * ce) * self.config.num_moe_experts
+                if self.routing == 'top2':
+                    me_2 = torch.mean(masked_route, dim=0)
+                    mask1 = F.one_hot(global_indices_2, num_classes=self.config.num_moe_experts)
+                    ce_2 = torch.mean(mask1.float(), dim=0)
+                    args.l_aux += torch.sum(me_2 * ce_2) * self.config.num_moe_experts
 
         # Collect token count for each expert and save to file
         if self.router_profiling_interval and (args.curr_iteration % self.router_profiling_interval == 0) and args.curr_iteration > 0:        
