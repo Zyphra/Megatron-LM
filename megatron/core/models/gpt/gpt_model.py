@@ -168,13 +168,7 @@ class GPTModel(LanguageModule):
             # [s b h] => [b s h]
             return logits.transpose(0, 1).contiguous()
 
-        # if args.curr_iteration % 2 == 0:
         loss = self.compute_language_model_loss(labels, logits)
-        #else:
-        #    if args.use_balancing_loss:
-        #        loss = args.l_aux
-        #    else:
-        #        loss = self.compute_language_model_loss(labels, logits)
         if args.use_balancing_loss:
            loss += args.l_aux
 
