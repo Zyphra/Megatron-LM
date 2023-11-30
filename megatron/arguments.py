@@ -630,7 +630,7 @@ def _add_network_size_args(parser):
     group.add_argument('--num-experts', type=int, default=None,
                        help='Number of Experts in Switch Transformer (None means no Switch)')
     group.add_argument('--routing-mode', type=str, default='sinkhorn',
-                       choices=['sinkhorn', 'top1', 'top2'],
+                       choices=['sinkhorn', 'top1', 'top2', 'sinkhorn_top2'],
                        help='Mode of the expert routing.')
     group.add_argument('--use-balancing-loss', action='store_true',
                        help='Use balancing loss for top1 and top2 MoE.')
