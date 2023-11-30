@@ -987,9 +987,6 @@ def evaluate_and_print_results(prefix, forward_step_func,
     if write_to_wandb:
         wandb_writer = get_wandb_writer()
 
-    if is_last_rank() and wandb_writer:
-        wandb_writer.log({'test': 1}, step=iteration)
-
     total_loss_dict, collected_non_loss_data, timelimit = evaluate(
         forward_step_func, data_iterator, model,
         process_non_loss_data_func, config, verbose)
