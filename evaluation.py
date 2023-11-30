@@ -3,16 +3,13 @@
 import socket
 from megatron import get_args
 from megatron import print_rank_0
-from megatron.core import mpu
 from megatron.checkpointing import load_checkpoint
 from megatron.initialize import initialize_megatron
 from megatron import is_last_rank
 from megatron.model import GPTModel
 from megatron.training import get_model
 from megatron.arguments import core_transformer_config_from_args
-from megatron.text_generation_server import MegatronServer
 from megatron.text_generation import generate_and_post_process
-from megatron.text_generation import beam_search_and_post_process
 import torch
 import os
 import sys
@@ -20,25 +17,11 @@ import lm_eval
 from lm_eval.base import BaseLM
 from megatron import get_tokenizer
 from megatron.text_generation.forward_step import ForwardStep
-from megatron.utils import get_ltor_masks_and_position_ids
-from lm_eval.models.gpt2 import GPT2LM
-from lm_eval import evaluator, tasks, utils
-from lm_eval.base import CacheHook
+from megatron.text_generation.generation import _build_attention_mask_and_position_ids
+from lm_eval import evaluator, tasks
 from lm_eval.tasks import ALL_TASKS
 import json
 import argparse
-
-
-def _build_attention_mask_and_position_ids(tokens):
-    """Build the attention mask and postition ids for the input tokens."""
-    attention_mask, _, position_ids = get_ltor_masks_and_position_ids(
-        data=tokens,
-        eod_token=None,
-        reset_position_ids=False,
-        reset_attention_mask=False,
-        eod_mask_loss=False)
-
-    return attention_mask, position_ids
 
 
 def extract_keyword_args(filestr, keyword):
@@ -51,14 +34,12 @@ def extract_keyword_args(filestr, keyword):
     gpt_args = ' '.join(gpt_args.split())
     return gpt_args.strip().split(" ")
 
+
 def extract_data_paths(filestr, checkpoint_path):
     vocab_file = filestr.split("VOCAB_FILE=")[1].split("\n")[0]
     merge_file = filestr.split("MERGE_FILE=")[1].split("\n")[0]
-    #vocab_file = "/workspace/gpt-neox/data/gpt2-vocab.json"
-    #merge_file = "/workspace/gpt-neox/data/gpt2-merges.txt"
-    #checkpoint_path = "/workspace/ckpts_bf16_125m"
     data_path = filestr.split("DATA_PATH=")[1].split("\n")[0]
-    return ["--data-path", data_path, "--vocab-file" , vocab_file, "--merge-file" , merge_file,"--load" , checkpoint_path]
+    return ["--data-path", data_path, "--vocab-file", vocab_file, "--merge-file", merge_file, "--load", checkpoint_path]
     
 
 def parse_config_file_update_argv(config_path, checkpoint_path):
@@ -68,7 +49,7 @@ def parse_config_file_update_argv(config_path, checkpoint_path):
     sys.argv = ["checkpointing_tests.py"] # a hack to get around the jupyter issues in the sys.argc which we are messing with
     sys.argv += extract_keyword_args(filestr, "GPT_ARGS")
     sys.argv += extract_data_paths(filestr, checkpoint_path)
-    #print(sys.argv)
+
 
 def model_provider(pre_process=True, post_process=True):
     """Build the model."""
@@ -81,6 +62,7 @@ def model_provider(pre_process=True, post_process=True):
 
     return model
 
+
 def add_text_generate_args(parser):
     group = parser.add_argument_group(title='text generation')
     group.add_argument("--port", type=int, default=5000,
@@ -89,32 +71,44 @@ def add_text_generate_args(parser):
 
 
 def init_megatron():
-    #if args.tokenizer_type == "GPT2BPETokenizer":
-    #    tokenizer_args = {'tokenizer_type': 'GPT2BPETokenizer',
-    #                                    'no_load_rng': True,
-    #                                    'no_load_optim': True}
-    #else:
-    #    tokenizer_args = {'tokenizer_type': 'HFAutoTokenizer',
-    #                'hf_autotokenizer_model': 'EleutherAI/gpt-neox-20b',
-    #                'no_load_rng': True,
-    #                'no_load_optim': True}
-        
-    initialize_megatron(extra_args_provider=add_text_generate_args,
-                        args_defaults = {'tokenizer_type': 'HFAutoTokenizer',
-                        'hf_autotokenizer_model': 'EleutherAI/gpt-neox-20b',
-                        'no_load_rng': True,
-                        'no_load_optim': True})
-
+    initialize_megatron(
+        extra_args_provider=add_text_generate_args,
+        args_defaults={
+            'tokenizer_type': 'HFAutoTokenizer',
+            'hf_autotokenizer_model': 'EleutherAI/gpt-neox-20b',
+            'no_load_rng': True,
+            'no_load_optim': True
+        }
+    )
 
 
 class MegatronEvaluateHarness(BaseLM):
-    def __init__(self,model, tokenizer, max_batch_size = 512, max_length=1024):
+    def __init__(
+        self, 
+        model,
+        tokenizer,
+        max_batch_size=512,
+        max_length=1024,
+        top_k_sampling=0.0,
+        top_p_sampling=0.0,
+        top_p_decay=0.0,
+        top_p_bound=0.0,
+        temperature=1.0,
+        random_seed=-1,
+    ):
         super(MegatronEvaluateHarness, self).__init__()
         self.max_batch_size = max_batch_size
         self._max_length = max_length
         self.tokenizer = tokenizer
         self.model = model
         
+        self.top_k_sampling = top_k_sampling
+        self.top_p_sampling = top_p_sampling
+        self.top_p_decay = top_p_decay
+        self.top_p_bound = top_p_bound
+        self.temperature = temperature
+        self.random_seed = random_seed
+    
         self.vocab_size = self.tokenizer.vocab_size
         
     @property
@@ -137,7 +131,6 @@ class MegatronEvaluateHarness(BaseLM):
     def batch_size(self):
         return self.max_batch_size
         
-    
     def tok_encode(self, string):
         return self.tokenizer.tokenize(string)
     
@@ -151,30 +144,30 @@ class MegatronEvaluateHarness(BaseLM):
             logits = self.forward_step(inps, position_ids, attention_mask)
             return logits
         
-    def _model_generate(self,context, max_length, eos_token_id):
-        args = get_args()
+    def _model_generate(self, context, max_length, eos_token_id):
         response, response_seg, response_logprobs, _ = \
-        generate_and_post_process(
-        self.model,
-        prompts=context,
-        tokens_to_generate=max_length,
-        return_output_log_probs=True,
-        top_k_sampling=0.0,
-        top_p_sampling=0.0,
-        top_p_decay=0.0,
-        top_p_bound=0.0,
-        temperature=1.0,
-        add_BOS=True,
-        use_eod_token_for_early_termination=True,
-        stop_on_double_eol=False,
-        stop_on_eol=False,
-        prevent_newline_after_colon=False,
-        random_seed=random_seed)
+            generate_and_post_process(
+                self.model,
+                prompts=context,
+                tokens_to_generate=max_length,
+                return_output_log_probs=True,
+                top_k_sampling=self.top_k_sampling,
+                top_p_sampling=self.top_p_sampling,
+                top_p_decay=self.top_p_decay,
+                top_p_bound=self.top_p_bound,
+                temperature=self.temperature,
+                add_BOS=True,
+                use_eod_token_for_early_termination=True,
+                stop_on_double_eol=False,
+                stop_on_eol=False,
+                prevent_newline_after_colon=False,
+                random_seed=self.random_seed,
+            )
         return response, response_seg, response_logprobs
             
             
 class Evaluator():
-    def __init__(self, checkpoint_path=None, model=None, results_path = "./results.json", tokenizer = None, task_list = None):
+    def __init__(self, checkpoint_path=None, model=None, results_path="./results.json", tokenizer=None, task_list=None):
         
         if tokenizer is None:
             try:
@@ -203,9 +196,9 @@ class Evaluator():
         self.results_path = results_path
         
         
-    def evaluate(self, max_batch_size = 64, max_length = 2048, adaptive_seqlen = False, num_fewshot = 0, eval_fp32 = False):
+    def evaluate(self, max_batch_size=64, max_length=2048, adaptive_seqlen=False, num_fewshot=0, eval_fp32=False):
         
-        adaptor = MegatronEvaluateHarness(self.model, self.tokenizer,max_batch_size=max_batch_size, max_length = max_length)
+        adaptor = MegatronEvaluateHarness(self.model, self.tokenizer, max_batch_size=max_batch_size, max_length=max_length)
         
         results = lm_eval.evaluator.evaluate(adaptor, self.task_dict, False, num_fewshot, None)
         print("RESULTS: ", results)
@@ -232,7 +225,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Download evaluation harness', allow_abbrev=False)
     parser.add_argument('--config', type=str, help='Path to the model config file.')
     parser.add_argument('--checkpoint', type=str, help='Path to the model config file.')
-    parser.add_argument('--task-list', type=str, default ="", help = "Pass in a comma separated task list")
+    parser.add_argument('--task-list', type=str, default="", help="Pass in a comma separated task list.")
+    parser.add_argument('--results-path', type=str, default="./results.json", help="Path for a json file with results.")
     
     args = parser.parse_args()
     
@@ -253,7 +247,4 @@ if __name__ == '__main__':
     evaluator = Evaluator(checkpoint_path = checkpoint_path, task_list = task_list)
     results = evaluator.evaluate()
     print("RESULTS: ", results)
-    evaluator.write_results(results, "./results.json")
-    
-    
-    
+    evaluator.write_results(results, args.results_path)
