@@ -295,17 +295,17 @@ class SwitchMLP(MegatronModule):
         if self.router_profiling_interval and (args.curr_iteration % self.router_profiling_interval == 0) and args.curr_iteration > 0:        
             if self.routing == 'sinkhorn' or self.routing == 'top1':
                 token_count = torch.bincount(global_indices, minlength=args.num_experts)
-            if self.routing == 'top2':
+            if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 token_count = torch.stack([torch.bincount(global_indices, minlength=args.num_experts),
                                            torch.bincount(global_indices_2, minlength=args.num_experts)])
             save_token_count(token_count, self.layer, args.curr_iteration, args.router_profiling_path)
 
         output_total = torch.zeros_like(global_hidden_states)
-        if self.routing == 'top2':
+        if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
             output_total_2 = torch.zeros_like(global_hidden_states)
         if self.add_bias:
             output_bias_total = torch.zeros_like(global_hidden_states)
-            if self.routing == 'top2':
+            if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_bias_total_2 = torch.zeros_like(global_hidden_states)
 
         for expert_num, expert in enumerate(self.local_experts):
@@ -318,7 +318,7 @@ class SwitchMLP(MegatronModule):
                 output_bias = output_bias.expand_as(output)
                 output_bias_total[local_indices, :] = output_bias
 
-            if self.routing == 'top2':
+            if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 local_indices = (global_indices_2 == local_expert_index).nonzero()
                 hidden = global_hidden_states[local_indices, :]
                 output, output_bias = expert(hidden)
@@ -327,22 +327,16 @@ class SwitchMLP(MegatronModule):
                     output_bias = output_bias.expand_as(output)
                     output_bias_total_2[local_indices, :] = output_bias
 
-
-
-      
-                    
-
-
         if self.sequence_parallel or (self.expert_parallel_size > 1):
             output_total = \
                 reduce_scatter_to_sequence_parallel_region_from_moe(output_total)
-            if self.routing == 'top2':
+            if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_total_2 = \
                     reduce_scatter_to_sequence_parallel_region_from_moe(output_total_2)
             if self.add_bias:
                 output_bias_total = \
                     reduce_scatter_to_sequence_parallel_region_from_moe(output_bias_total)
-                if self.routing == 'top2':
+                if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                     output_bias_total_2 = \
                         reduce_scatter_to_sequence_parallel_region_from_moe(output_bias_total_2)
                     
@@ -351,19 +345,19 @@ class SwitchMLP(MegatronModule):
                 # reduce scatter reduces bias across tensor parallel_ranks
                 output_bias_total = \
                     output_bias_total/mpu.get_tensor_model_parallel_world_size()
-                if self.routing == 'top2':
+                if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                     output_bias_total_2 = \
                         output_bias_total_2/mpu.get_tensor_model_parallel_world_size()
 
         output_total = output_total*max_prob
-        if self.routing == 'top2':
+        if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
             output_total_2 = output_total_2*max_prob_2
             output_total = output_total + output_total_2
         output_total = output_total.view(s, b, h)
         if self.add_bias:
-            output_bias_total = output_bias_total*max_prob
-            if self.routing == 'top2':
-                output_bias_total_2 = output_bias_total_2*max_prob_2
+            output_bias_total = output_bias_total * max_prob
+            if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
+                output_bias_total_2 = output_bias_total_2 * max_prob_2
                 output_bias_total = output_bias_total + output_bias_total_2
             output_bias_total = output_bias_total.view(s, b, h)
 
