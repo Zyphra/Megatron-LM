@@ -7,6 +7,7 @@ import torch
 from megatron import get_args
 from megatron.core import tensor_parallel
 from .module import MegatronModule
+from megatron import get_args
 
 from .enums import AttnMaskType
 from .language_model import parallel_lm_logits
@@ -37,6 +38,11 @@ def post_language_model_processing(lm_output, labels, logit_weights,
         
         # [s b] => [b, s]
         loss = loss.transpose(0,1).contiguous()
+        
+        args = get_args()
+        if args.use_balancing_loss:
+          loss += args.l_aux
+          
         return loss
 
 
@@ -78,7 +84,11 @@ class GPTModel(MegatronModule):
                 retriever_position_ids=None,
                 retriever_attn_mask=None,
                 labels=None, tokentype_ids=None, inference_params=None):
-
+                  
+        if labels is not None:
+            args = get_args()
+            if args.use_balancing_loss:
+                args.l_aux = 0.0
         lm_output = self.language_model(
             input_ids,
             position_ids,
