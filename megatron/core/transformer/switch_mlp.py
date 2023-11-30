@@ -128,7 +128,7 @@ class SwitchMLP(MegatronModule):
             if self.routing == 'top2':
                 masked_route = route.clone()
                 mask = torch.arange(route.shape[1], device=route.device).unsqueeze(0) == max_ind.unsqueeze(1)
-                masked_route[mask] = - float('inf')
+                masked_route[mask] = 0.0
                 max_prob_2, max_ind_2 = torch.max(masked_route, dim=1)
 
           
@@ -158,6 +158,12 @@ class SwitchMLP(MegatronModule):
                 mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
                 ce = torch.mean(mask1.float(), dim=0)
                 args.l_aux += torch.sum(me * ce) * self.config.num_moe_experts
+                if self.routing == 'top2':
+                    me_2 = torch.mean(masked_route, dim=0)
+                    mask1 = F.one_hot(global_indices_2, num_classes=self.config.num_moe_experts)
+                    ce_2 = torch.mean(mask1.float(), dim=0)
+                    args.l_aux += torch.sum(me_2 * ce_2) * self.config.num_moe_experts
+                    
 
         # Collect token count for each expert and save to file
         if self.router_profiling_interval and (args.curr_iteration % self.router_profiling_interval == 0) and args.curr_iteration > 0:        
