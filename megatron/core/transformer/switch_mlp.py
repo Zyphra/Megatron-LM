@@ -163,7 +163,6 @@ class SwitchMLP(MegatronModule):
                     mask1 = F.one_hot(global_indices_2, num_classes=self.config.num_moe_experts)
                     ce_2 = torch.mean(mask1.float(), dim=0)
                     args.l_aux += torch.sum(me_2 * ce_2) * self.config.num_moe_experts
-                    
 
         # Collect token count for each expert and save to file
         if self.router_profiling_interval and (args.curr_iteration % self.router_profiling_interval == 0) and args.curr_iteration > 0:        
