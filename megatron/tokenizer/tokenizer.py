@@ -42,7 +42,8 @@ def build_tokenizer(args):
         tokenizer = _Llama2Tokenizer(args.tokenizer_model)
     elif args.tokenizer_type == 'HFAutoTokenizer':
         assert args.hf_autotokenizer_model is not None
-        print(f"Initializing {args.hf_autotokenizer_model} tokenizer from HuggingFace")
+        if args.rank == 0:
+            print(f"Initializing {args.hf_autotokenizer_model} tokenizer from HuggingFace")
         tokenizer = _HFAutoTokenizer(args.hf_autotokenizer_model)        
     elif args.tokenizer_type == 'NullTokenizer':
         assert args.vocab_size is not None

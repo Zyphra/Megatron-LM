@@ -1,12 +1,12 @@
 # File containing evaluation scripts and evaluator object from lm eval harness
 
-import socket
 from megatron import get_args
 from megatron import print_rank_0
 from megatron.checkpointing import load_checkpoint
 from megatron.initialize import initialize_megatron
 from megatron import is_last_rank
 from megatron.model import GPTModel
+from megatron.core import mpu
 from megatron.training import get_model
 from megatron.arguments import core_transformer_config_from_args
 from megatron.text_generation import generate_and_post_process
@@ -94,7 +94,7 @@ class MegatronEvaluateHarness(BaseLM):
         top_p_decay=0.0,
         top_p_bound=0.0,
         temperature=1.0,
-        random_seed=-1,
+        random_seed=1234,
     ):
         super(MegatronEvaluateHarness, self).__init__()
         self.max_batch_size = max_batch_size
@@ -186,7 +186,7 @@ class Evaluator():
             assert len(model) == 1, "Above condition should have caught this"
             self.model = model[0]
             
-        print("TASK LIST: ", task_list)
+        print_rank_0(f"TASK LIST: {task_list}")
         if task_list is None:
             self.task_list = ["lambada_openai","hellaswag"]
         else:
@@ -201,7 +201,6 @@ class Evaluator():
         adaptor = MegatronEvaluateHarness(self.model, self.tokenizer, max_batch_size=max_batch_size, max_length=max_length)
         
         results = lm_eval.evaluator.evaluate(adaptor, self.task_dict, False, num_fewshot, None)
-        print("RESULTS: ", results)
         return results
     
     def write_results(self, results, results_path = None):
@@ -239,12 +238,18 @@ if __name__ == '__main__':
         task_list = None
     if task_list == "all":
         task_list = ALL_TASKS
+    
     # parse the config file
     parse_config_file_update_argv(config_path, checkpoint_path)
+    
     # initialize megatron with the correct args
     init_megatron()
+    
     # begin evaluation
-    evaluator = Evaluator(checkpoint_path = checkpoint_path, task_list = task_list)
+    evaluator = Evaluator(checkpoint_path=checkpoint_path, task_list=task_list)
     results = evaluator.evaluate()
-    print("RESULTS: ", results)
-    evaluator.write_results(results, args.results_path)
+
+    # Taking results from the correct rank (hopefully)
+    if mpu.is_pipeline_last_stage() and mpu.get_tensor_model_parallel_rank() == 0:
+        print(f"RESULTS: ", results)
+        evaluator.write_results(results, args.results_path)
