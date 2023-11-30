@@ -40,8 +40,8 @@ def post_language_model_processing(lm_output, labels, logit_weights,
         loss = loss.transpose(0,1).contiguous()
         
         args = get_args()
-        if args.use_balancing_loss:
-          loss += args.l_aux
+        if args.use_balancing_loss is not None:
+          loss += args.use_balancing_loss * args.l_aux
           
         return loss
 
@@ -87,7 +87,7 @@ class GPTModel(MegatronModule):
                   
         if labels is not None:
             args = get_args()
-            if args.use_balancing_loss:
+            if args.use_balancing_loss is not None:
                 args.l_aux = 0.0
         lm_output = self.language_model(
             input_ids,
