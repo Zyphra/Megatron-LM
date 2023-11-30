@@ -282,14 +282,14 @@ class SwitchMLP(MegatronModule):
         if args.use_balancing_loss and self.training:
             if hasattr(args, 'l_aux'):
                 me = torch.mean(route, dim=0)
-                mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
+                mask1 = F.one_hot(global_indices, num_classes=args.num_experts)
                 ce = torch.mean(mask1.float(), dim=0)
-                args.l_aux += torch.sum(me * ce) * self.config.num_moe_experts
+                args.l_aux += torch.sum(me * ce) * args.num_experts
                 if self.routing == 'top2':
                     me_2 = torch.mean(masked_route, dim=0)
-                    mask1 = F.one_hot(global_indices_2, num_classes=self.config.num_moe_experts)
+                    mask1 = F.one_hot(global_indices_2, num_classes=args.num_experts)
                     ce_2 = torch.mean(mask1.float(), dim=0)
-                    args.l_aux += torch.sum(me_2 * ce_2) * self.config.num_moe_experts
+                    args.l_aux += torch.sum(me_2 * ce_2) * args.num_experts
 
         # Collect token count for each expert and save to file
         if self.router_profiling_interval and (args.curr_iteration % self.router_profiling_interval == 0) and args.curr_iteration > 0:        
