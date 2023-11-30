@@ -152,7 +152,7 @@ class SwitchMLP(MegatronModule):
                 global_indices_2 = max_ind_2
 
         # Evaluate balancing loss.
-        if args.use_balancing_loss and self.training:
+        if (args.use_balancing_loss is not None) and self.training:
             if hasattr(args, 'l_aux'):
                 me = torch.mean(route, dim=0)
                 mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
