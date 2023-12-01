@@ -98,6 +98,7 @@ class SwitchMLP(MegatronModule):
         route = self.router(hidden_states)
         route = route.view(-1, self.config.num_moe_experts)
 
+        if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"SwitchMLP forward")
 
         if self.routing == 'sinkhorn' or self.routing == 'sinkhorn_top2':
             if self.training:
@@ -180,7 +181,8 @@ class SwitchMLP(MegatronModule):
             output_bias_total = torch.zeros_like(global_hidden_states)
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_bias_total_2 = torch.zeros_like(global_hidden_states)
-
+                
+        if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Experts loop")
         for expert_num, expert in enumerate(self.local_experts):
             local_expert_index = self.local_expert_indices[expert_num]
             local_indices = (global_indices == local_expert_index).nonzero()
@@ -199,6 +201,7 @@ class SwitchMLP(MegatronModule):
                 if self.add_bias:
                     output_bias = output_bias.expand_as(output)
                     output_bias_total_2[local_indices, :] = output_bias
+        if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
 
 
         if self.sequence_parallel or (self.expert_parallel_size > 1):
@@ -243,5 +246,5 @@ class SwitchMLP(MegatronModule):
         else:
             output_bias_total = None
             
-
+        if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
         return output_total, output_bias_total
