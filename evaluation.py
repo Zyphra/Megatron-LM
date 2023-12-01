@@ -46,7 +46,7 @@ def parse_config_file_update_argv(config_path, checkpoint_path):
     with open(config_path,"r") as f:
         filestr = f.read()
     
-    sys.argv = ["checkpointing_tests.py"] # a hack to get around the jupyter issues in the sys.argc which we are messing with
+    sys.argv = [""]
     sys.argv += extract_keyword_args(filestr, "GPT_ARGS")
     sys.argv += extract_data_paths(filestr, checkpoint_path)
 
@@ -97,6 +97,8 @@ class MegatronEvaluateHarness(BaseLM):
         random_seed=1234,
     ):
         super(MegatronEvaluateHarness, self).__init__()
+        args = get_args()
+        self.args = args        
         self.max_batch_size = max_batch_size
         self._max_length = max_length
         self.tokenizer = tokenizer
@@ -110,6 +112,12 @@ class MegatronEvaluateHarness(BaseLM):
         self.random_seed = random_seed
     
         self.vocab_size = self.tokenizer.vocab_size
+
+        self.is_main = args.rank == 0
+        self.is_local_main = args.local_rank == 0
+        self.is_model_parallel = mpu.get_tensor_model_parallel_world_size() > 1
+        self.is_pipe_parallel = mpu.get_pipeline_model_parallel_world_size() > 1
+        self.is_data_parallel = mpu.get_data_parallel_world_size() > 1        
         
     @property
     def eot_token_id(self):
@@ -138,7 +146,7 @@ class MegatronEvaluateHarness(BaseLM):
         return self.tokenizer.detokenize(tokens.cpu().numpy())
     
     def _model_call(self, inps):
-        self.forward_step = ForwardStep(self.model, max_batch_size = self.max_batch_size, max_sequence_length = self.max_length)
+        self.forward_step = ForwardStep(self.model, max_batch_size=self.max_batch_size, max_sequence_length=self.max_length)
         with torch.no_grad():
             attention_mask, position_ids = _build_attention_mask_and_position_ids(inps)
             logits = self.forward_step(inps, position_ids, attention_mask)
@@ -188,7 +196,7 @@ class Evaluator():
             
         print_rank_0(f"TASK LIST: {task_list}")
         if task_list is None:
-            self.task_list = ["lambada_openai","hellaswag"]
+            self.task_list = ["lambada_openai", "hellaswag"]
         else:
             self.task_list = task_list.split(",")
             
@@ -203,7 +211,7 @@ class Evaluator():
         results = lm_eval.evaluator.evaluate(adaptor, self.task_dict, False, num_fewshot, None)
         return results
     
-    def write_results(self, results, results_path = None):
+    def write_results(self, results, results_path=None):
         if results_path is None:
             results_path = self.results_path
             
@@ -214,10 +222,6 @@ class Evaluator():
 
 
 if __name__ == '__main__':
-    # pass in a config name and checkpoint path
-    #config_path = "examples/bf16_125m_8E.sh"
-    #checkpoint_path = "/workspace/ckpts_bf16_125m"
-    
     # EXAMPLE COMMAND:
     # torchrun --nproc_per_node 8 --nnodes 1 --node_rank 0 --master_addr localhost --master_port 6000 evaluation.py --config /opt/Megatron-LM/examples/megarun_slurm/moe_1p3B_8E_bare.sh --checkpoint /checkpoints/megarun/ckpts_1p3b_bf16 --task-list openbookqa,arc_easy,winogrande,hellaswag,arc_challenge,piqa,boolq,lambada_openai
     # task list openbookqa,arc_easy,winogrande,hellaswag,arc_challenge,piqa,boolq,lambada_openai,lambada_standard
@@ -250,6 +254,7 @@ if __name__ == '__main__':
     results = evaluator.evaluate()
 
     # Taking results from the correct rank (hopefully)
+    megatron_args = get_args()
     if mpu.is_pipeline_last_stage() and mpu.get_tensor_model_parallel_rank() == 0:
-        print(f"RESULTS: ", results)
+        print(f"RESULTS for [rank {megatron_args.rank}, local_rank {megatron_args.local_rank}]: ", results)
         evaluator.write_results(results, args.results_path)
