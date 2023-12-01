@@ -68,7 +68,7 @@ The schedule looks like this:
 
 ## Expert Routing 
 
-The default expert routing algorithm is sinkhorn ([Clark et al., ICML 2022](https://proceedings.mlr.press/v162/clark22a.html)). To choose the routing algorithm, in ```/opt/Megatron-LM/examples/pretrain_gpt_distributed.sh``` include the flag `--routing-mode` in `GPT_ARGS` with options `sinkhorn`, `top1`, or `top2`. See [Fedus et al. 2022](https://arxiv.org/abs/2209.01667) for an overview and references on expert routing algorithms. Currently, `top1` and `top2` choices do not keep balancing into account, i.e. it is possible that different experts will receive disproportionately more tokens than others, which is far from compute-optimal.
+The default expert routing algorithm is sinkhorn ([Clark et al., ICML 2022](https://proceedings.mlr.press/v162/clark22a.html)). To choose the routing algorithm, in ```/opt/Megatron-LM/examples/pretrain_gpt_distributed.sh``` include the flag `--routing-mode` in `GPT_ARGS` with options `sinkhorn`, `sinkhorn_top2`, `top1`, or `top2`. See [Fedus et al. 2022](https://arxiv.org/abs/2209.01667) for an overview and references on expert routing algorithms. One issue with MoE is to ensure that the expert calls are balanced. Sinkhorn takes care of this by construction. To encourage a more balanced usage of experts for `top1` and `top2` modes, add the flag `--use-balancing-loss k`, where `k` is `float-type`, which modifies the LM loss by L -> L + k * L_{bal}, where L_{bal} is a balancing loss. The balancing loss we use for `top1` was introduced in ([Lepikhin et al., ICLR 2021](https://openreview.net/forum?id=qrwe7XHTmYb)), and we introduced a generalization for `top2` that appears to work better.
 
  ### Performance Analysis of Routing Algorithms
 

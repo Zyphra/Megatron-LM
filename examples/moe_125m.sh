@@ -79,9 +79,9 @@ OUTPUT_ARGS="
 #"
 
 torchrun $DISTRIBUTED_ARGS /workspace/Megatron-LM/pretrain_gpt.py \
-    $GPT_ARGS \
-    $DATA_ARGS \
-    $OUTPUT_ARGS \
-    --distributed-backend nccl 
-   # --save $CHECKPOINT_PATH \
-   # --load $CHECKPOINT_PATH
+   $GPT_ARGS \
+   $DATA_ARGS \
+   $OUTPUT_ARGS \
+   --distributed-backend nccl 
+#    --save $CHECKPOINT_PATH \
+#    --load $CHECKPOINT_PATH

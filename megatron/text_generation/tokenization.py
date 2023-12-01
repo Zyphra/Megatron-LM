@@ -34,6 +34,8 @@ def detokenize_generations(tokens_gpu_tensor,
                                            'GPTSentencePieceTokenizer',
                                            'Llama2Tokenizer']:
                     word = tokenizer.decoder[token]
+                elif args.tokenizer_type == 'HFAutoTokenizer':
+                    word = tokenizer.tokenizer.decode(token)
                 elif args.tokenizer_type == 'NullTokenizer':
                     word = str(token)
                 else:
