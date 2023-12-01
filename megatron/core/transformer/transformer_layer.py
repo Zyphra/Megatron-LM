@@ -165,12 +165,14 @@ class TransformerLayer(MegatronModule):
         input_layernorm_output = self.input_layernorm(hidden_states)
 
         # Self attention.
+        if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Self attention")
         attention_output_with_bias = self.self_attention(
             input_layernorm_output,
             attention_mask=attention_mask,
             inference_params=inference_params,
             rotary_pos_emb=rotary_pos_emb,
         )
+        if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
 
         # TODO: could we move `bias_dropout_add_exec_handler` itself
         # inside the module provided in the `bias_dropout_add_spec` module?
@@ -186,12 +188,14 @@ class TransformerLayer(MegatronModule):
         pre_cross_attn_layernorm_output = self.pre_cross_attn_layernorm(hidden_states)
 
         # Cross attention.
+        if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Cross attention")
         attention_output_with_bias = self.cross_attention(
             pre_cross_attn_layernorm_output,
             attention_mask=attention_mask,
             context=context,
             inference_params=inference_params,
         )
+        if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
 
         # TODO: could we move `bias_dropout_add_exec_handler` itself
         # inside the module provided in the `bias_dropout_add_spec` module?
@@ -207,7 +211,9 @@ class TransformerLayer(MegatronModule):
         pre_mlp_layernorm_output = self.pre_mlp_layernorm(hidden_states)
 
         # MLP.
+        if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"MLP")
         mlp_output_with_bias = self.mlp(pre_mlp_layernorm_output)
+        if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
 
         # TODO: could we move `bias_dropout_add_exec_handler` itself
         # inside the module provided in the `bias_dropout_add_spec` module?
