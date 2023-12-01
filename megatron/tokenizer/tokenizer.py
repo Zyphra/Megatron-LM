@@ -42,7 +42,8 @@ def build_tokenizer(args):
         tokenizer = _Llama2Tokenizer(args.tokenizer_model)
     elif args.tokenizer_type == 'HFAutoTokenizer':
         assert args.hf_autotokenizer_model is not None
-        print(f"Initializing {args.hf_autotokenizer_model} tokenizer from HuggingFace")
+        if args.rank == 0:
+            print(f"Initializing {args.hf_autotokenizer_model} tokenizer from HuggingFace")
         tokenizer = _HFAutoTokenizer(args.hf_autotokenizer_model)        
     elif args.tokenizer_type == 'NullTokenizer':
         assert args.vocab_size is not None
@@ -144,6 +145,7 @@ class _HFAutoTokenizer(AbstractTokenizer):
         self.tokenizer.add_special_tokens({"pad_token": "<|padding|>"})
         self.eod_id = self.tokenizer.eos_token_id
         self.pad_id = self.tokenizer.pad_token_id
+        self._inv_vocab = {v: k for k, v in self.tokenizer.get_vocab().items()}
 
     @property
     def vocab_size(self):
@@ -155,7 +157,7 @@ class _HFAutoTokenizer(AbstractTokenizer):
 
     @property
     def inv_vocab(self):
-        return {v: k for k, v in self.tokenizer.get_vocab().items()}
+        return self._inv_vocab
 
     def tokenize(self, text: str):
         return self.tokenizer.encode(text)
