@@ -180,16 +180,12 @@ def forward_step(data_iterator, model: GPTModel):
     timers('batch-generator').stop()
     if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
 
-    timers('forward-pass-paolo', log_level=2).start()
     if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Forward pass")
     output_tensor = model(tokens, position_ids, attention_mask,
                           labels=labels)
     if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
-    timers('forward-pass-paolo').stop()
-    print('FORWARD PASS:', timers.forward_pass_paolo)
 
     return output_tensor, partial(loss_func, loss_mask)
-
 
 def is_dataset_built_on_rank():
     return (mpu.is_pipeline_first_stage() or mpu.is_pipeline_last_stage()) and mpu.get_tensor_model_parallel_rank() == 0
