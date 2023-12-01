@@ -251,12 +251,14 @@ class TransformerBlock(MegatronModule):
                 )
             else:
                 for layer in self.layers:
+                    if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Single layer forward")
                     hidden_states = layer(
                         hidden_states=hidden_states,
                         attention_mask=attention_mask,
                         rotary_pos_emb=rotary_pos_emb,
                         inference_params=inference_params,
                     )
+                    if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
 
         # Final layer norm.
         if self.post_process and self.post_layer_norm:
