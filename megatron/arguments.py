@@ -391,6 +391,8 @@ def validate_args(args, defaults={}):
     # MoE Spec check
     if args.num_experts is not None:
         assert args.model_spec is None, "Model Spec must be None when using MoEs"
+    if args.use_balancing_loss is not None:
+        assert (args.routing_mode == 'top1' or args.routing_mode == 'top2'), "Need --routing-mode = 'top1' or 'top2' if setting --use-balancing-loss."
 
     # Expert parallelism check
     if args.expert_model_parallel_size  > 1:
@@ -628,8 +630,11 @@ def _add_network_size_args(parser):
     group.add_argument('--num-experts', type=int, default=None,
                        help='Number of Experts in Switch Transformer (None means no Switch)')
     group.add_argument('--routing-mode', type=str, default='sinkhorn',
-                       choices=['sinkhorn', 'top1', 'top2'],
+                       choices=['sinkhorn', 'top1', 'top2', 'sinkhorn_top2'],
                        help='Mode of the expert routing.')
+    group.add_argument('--use-balancing-loss', type=float, default=None,
+                       help='Use balancing loss for top1 and top2 MoE.'
+                       'The value set is the stiffness of the balancing loss.')
     group.add_argument('--untie-embeddings-and-output-weights', action='store_true',
                        help='Untie embeddings and output weights.'),
     return parser
@@ -1041,6 +1046,8 @@ def _add_checkpointing_args(parser):
                        help="If '--load' is set, but checkpoint is not found "
                        "(e.g., path typo), then exit instead of random "
                        "initialization.")
+    group.add_argument('--enable-manual-profiling', action='store_true',
+                       help="Profile through NVIDIA Nsight Systems.")
 
     return parser
 
