@@ -201,7 +201,11 @@ class SwitchMLP(MegatronModule):
             local_expert_index = self.local_expert_indices[expert_num]
             local_indices = (global_indices == local_expert_index).nonzero()
             hidden = global_hidden_states[local_indices, :]
+            if self.config.timers is not None:
+                self.config.timers('expert_fwd', log_level=2).start()
             output, output_bias = expert(hidden)
+            if self.config.timers is not None:
+                self.config.timers('expert_fwd').stop()
             output_total[local_indices, :] = output
             if self.add_bias:
                 output_bias = output_bias.expand_as(output)
@@ -229,7 +233,8 @@ class SwitchMLP(MegatronModule):
                 output_total_2 = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                 output_total_2
             )
-                
+            if self.config.timers is not None:
+                self.config.timers('bias_scatter', log_level=2).start()
             if self.add_bias:
                 output_bias_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                     output_bias_total
@@ -248,6 +253,8 @@ class SwitchMLP(MegatronModule):
                     output_bias_total_2 = (
                     output_bias_total_2 / parallel_state.get_tensor_model_parallel_world_size()
                 )
+            if self.config.timers is not None:
+                self.config.timers('bias_scatter').stop()
         if self.config.timers is not None:
             self.config.timers('ep_scatter').stop()
 
