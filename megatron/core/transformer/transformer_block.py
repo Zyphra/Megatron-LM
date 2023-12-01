@@ -14,6 +14,7 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
 from megatron.core.utils import make_sharded_tensor_for_checkpoint, make_viewless_tensor
+from megatron import get_args
 
 
 class TransformerBlock(MegatronModule):
@@ -251,6 +252,7 @@ class TransformerBlock(MegatronModule):
                 )
             else:
                 for layer in self.layers:
+                    args = get_args()
                     if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Single layer forward")
                     hidden_states = layer(
                         hidden_states=hidden_states,
