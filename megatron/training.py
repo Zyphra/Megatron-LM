@@ -1152,7 +1152,7 @@ def build_train_valid_test_data_loaders(
         do_train = train_dataloader is not None and args.train_iters > 0
         do_valid = valid_dataloader is not None and args.eval_iters > 0
         do_test = test_dataloader is not None and args.eval_iters > 0
-        run_eval_harness = args.eval_harness_tasks> 0
+        run_eval_harness = len(args.eval_harness_tasks) > 0
         flags = torch.cuda.LongTensor(
             [int(do_train), int(do_valid), int(do_test), int(run_eval_harness)])
     else:
