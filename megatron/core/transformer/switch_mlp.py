@@ -202,15 +202,14 @@ class SwitchMLP(MegatronModule):
 
         if self.config.timers is not None:
             self.config.timers('routing_loop', log_level=2).start()
-        with profile(activities=[
-                                 ProfilerActivity.CUDA], record_shapes=True) as prof:
-            with record_function("model_inference"):
-                test_tensor = torch.randn((10000,10000)).to("cuda:0")
-                torch.sum(test_tensor)
                 for expert_num, expert in enumerate(self.local_experts):
+                    if self.config.timers is not None:
+                        self.config.timers('expert_idx', log_level=2).start()
                     local_expert_index = self.local_expert_indices[expert_num]
                     local_indices = (global_indices == local_expert_index).nonzero()
                     hidden = global_hidden_states[local_indices, :]
+                    if self.config.timers is not None:
+                        self.config.timers('expert_idx').stop()
                     if self.config.timers is not None:
                         self.config.timers('expert_fwd', log_level=2).start()
                     output, output_bias = expert(hidden)
@@ -229,7 +228,7 @@ class SwitchMLP(MegatronModule):
                         if self.add_bias:
                             output_bias = output_bias.expand_as(output)
                             output_bias_total_2[local_indices, :] = output_bias
-        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+        
         if  self.config.timers is not None:
             self.config.timers('routing_loop').stop()
 
