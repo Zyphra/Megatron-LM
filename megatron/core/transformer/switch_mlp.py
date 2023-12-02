@@ -103,10 +103,14 @@ class SwitchMLP(MegatronModule):
         if self.routing == 'sinkhorn' or self.routing == 'sinkhorn_top2':
             if self.training:
                 with torch.no_grad():
+                    if self.config.timers is not None:
+                        self.config.timers('sinkhorn', log_level=2).start()
                     norm_route = self.route_algo(
                         route.detach().to(dtype=torch.float32)
                     )  # explicit fp32 conversion for stability
                     _, max_ind = torch.max(norm_route, dim=1)
+                    if self.config.timers is not None:
+                        self.config.timers('sinkhorn').stop()
                 route = self.router_activation(route)
                 max_prob = route[torch.arange(route.size(0)), max_ind]
                 if self.routing == 'sinkhorn_top2':
