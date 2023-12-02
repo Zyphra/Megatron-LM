@@ -3,7 +3,7 @@
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 export WANDB_API_KEY=6f0443d34d41df289b878635a247d89381c06271
 
-GPUS_PER_NODE=4
+GPUS_PER_NODE=8
 # Change for multinode config
 MASTER_ADDR=localhost
 MASTER_PORT=6000
@@ -32,8 +32,8 @@ GPT_ARGS="
     --num-layers 12 \
     --hidden-size 768 \
     --num-attention-heads 12 \
-    --seq-length 1024 \
-    --max-position-embeddings 1024 \
+    --seq-length 2048 \
+    --max-position-embeddings 2048 \
     --micro-batch-size 64 \
     --global-batch-size 1024 \
     --lr 0.00015 \
@@ -71,14 +71,14 @@ OUTPUT_ARGS="
     --eval-interval 50 \
     --eval-iters 50 \
     --eval-harness-interval 1 \
-    --eval-harness-tasks openbookqa \    
+    --eval-harness-tasks openbookqa \
     --wandb-project $WANDB_PROJECT \
     --wandb-exp-name $WANDB_EXP_NAME \
     --wandb-save-dir $WANDB_SAVE_DIR
 "
 
 
-torchrun $DISTRIBUTED_ARGS /workspace/Megatron-LM/pretrain_gpt.py \
+torchrun $DISTRIBUTED_ARGS /opt/Megatron-LM/pretrain_gpt.py \
     $GPT_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \

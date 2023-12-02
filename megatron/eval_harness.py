@@ -6,7 +6,6 @@ from megatron import get_tokenizer
 from megatron import is_last_rank
 from megatron import print_rank_0
 from megatron import get_args
-from megatron.training import get_model
 from megatron.text_generation.forward_step import ForwardStep
 from megatron.text_generation.generation import _build_attention_mask_and_position_ids
 from megatron.arguments import core_transformer_config_from_args
@@ -132,7 +131,8 @@ class Evaluator():
         
         if model is not None:
             self.model = model
-        else: 
+        else:
+            from megatron.training import get_model
             model = get_model(model_provider, wrap_with_ddp=False)
             _ = load_checkpoint(model, None, None)
             assert len(model) == 1, "Above condition should have caught this"
