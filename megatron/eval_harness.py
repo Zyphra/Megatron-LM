@@ -1,6 +1,6 @@
 import lm_eval 
 from lm_eval.base import BaseLM
-from lm_eval import tasks
+from lm_eval import evaluator, tasks
 
 from megatron import get_tokenizer
 from megatron import is_last_rank
@@ -58,9 +58,6 @@ class MegatronEvaluateHarness(BaseLM):
         self.random_seed = random_seed
     
         self.vocab_size = self.tokenizer.vocab_size
-
-        self.is_main = args.rank == 0
-        self.is_local_main = args.local_rank == 0  
         
     @property
     def eot_token_id(self):
@@ -160,7 +157,7 @@ class Evaluator():
         
         adaptor = MegatronEvaluateHarness(self.model, self.tokenizer, max_batch_size=max_batch_size, max_length=max_length)
         
-        results = lm_eval.evaluator.evaluate(adaptor, self.task_dict, False, num_fewshot, None)
+        results = evaluator.evaluate(adaptor, self.task_dict, False, num_fewshot, None)
         return results
     
     def write_results(self, results, results_path=None):

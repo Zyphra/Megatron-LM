@@ -9,7 +9,6 @@ from megatron.eval_harness import Evaluator
 import os
 import sys
 
-from lm_eval import evaluator
 from lm_eval.tasks import ALL_TASKS
 import argparse
 

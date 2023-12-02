@@ -455,11 +455,11 @@ def train_step(forward_step_func, data_iterator,
         unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
 
     # Update parameters.
-    if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Optimizer step")
+    #if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Optimizer step")
     timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
     update_successful, grad_norm, num_zeros_in_grad = optimizer.step(args, timers)
     timers('optimizer').stop()
-    if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
+    #if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
 
     # Gather params.
     if update_successful:
@@ -817,7 +817,8 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                     # Collect all objects.
                     gc.collect()
                 prefix = 'iteration {}'.format(iteration)
-                run_evaluation_harness_print_results(prefix, model, iteration, True)
+                run_evaluation_harness_and_print_results(prefix, model, iteration, 
+                                                         args.eval_harness_tasks, True)
                 if args.manual_gc and args.manual_gc_eval:
                     # Collect only the objects created and used in evaluation.
                     gc.collect(generation=0)
@@ -1042,7 +1043,7 @@ def evaluate_and_print_results(prefix, forward_step_func,
     print_rank_last('-' * length)
 
 
-def run_evaluation_harness_print_results(prefix, model, iteration, write_to_wandb=True):
+def run_evaluation_harness_and_print_results(prefix, model, iteration, tasks, write_to_wandb=True):
     """Helper function to run evaluation harness and dump results on screen."""
     
     # Turn on evaluation mode which disables dropout.
@@ -1054,25 +1055,41 @@ def run_evaluation_harness_print_results(prefix, model, iteration, write_to_wand
     if write_to_wandb:
         wandb_writer = get_wandb_writer()
 
-    evaluator = Evaluator(model=model)
+    unwrapped_model = unwrap_model(model)[0]
+    encoder_recompute_granularity = None
+    if unwrapped_model.language_model.encoder:
+        encoder_recompute_granularity = unwrapped_model.language_model.encoder.recompute_granularity
+        unwrapped_model.language_model.encoder.recompute_granularity = None
+    decoder_recompute_granularity = None
+    if unwrapped_model.language_model.decoder:
+        decoder_recompute_granularity = unwrapped_model.language_model.decoder.recompute_granularity
+        unwrapped_model.language_model.decoder.recompute_granularity = None
+    evaluator = Evaluator(model=unwrapped_model, task_list=tasks)
     results = evaluator.evaluate()
 
-    string = ' evaluation harness results at {} | '.format(prefix)
-    for key in results:
-        string += '{} value: {:.6E} | '.format(key, results[key])
+    string = ' evaluation harness results at {}:'.format(prefix)
+    for test_key, test_result in results['results'].items():
+        string += f'\n  {test_key}: '
+        for key, val in test_result.items():
+            whole_key = test_key + key
+            string += '{} value: {:.6f} | '.format(key, val)
 
-        if is_last_rank():
-            print(wandb_writer)
-        if wandb_writer and is_last_rank():
-            wandb_writer.log({
-                '{} eval_harness'.format(key): results[key]},
-                iteration)
+            if is_last_rank():
+                print(wandb_writer)
+            if wandb_writer and is_last_rank():
+                wandb_writer.log({
+                    '{} eval_harness'.format(whole_key): val},
+                    iteration)
 
     length = len(string) + 1
     print_rank_last('-' * length)
     print_rank_last(string)
     print_rank_last('-' * length)
 
+    if unwrapped_model.language_model.encoder:
+        unwrapped_model.language_model.encoder.recompute_granularity = encoder_recompute_granularity
+    if unwrapped_model.language_model.decoder:
+        unwrapped_model.language_model.decoder.recompute_granularity = decoder_recompute_granularity
     # Move model back to the train mode.
     for model_module in model:
         model_module.train()    

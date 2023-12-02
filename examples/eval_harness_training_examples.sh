@@ -12,9 +12,9 @@ NODE_RANK=0
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
 CHECKPOINT_PATH=/workspace/ckpts
-VOCAB_FILE=/data/gpt2-vocab.json
-MERGE_FILE=/data/gpt2-merges.txt
-DATA_PATH=/data/redpajama-arxiv-test_text_sentence
+VOCAB_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/vocab.json
+MERGE_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt
+DATA_PATH=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/train_text_document
 
 WANDB_PROJECT=moe
 WANDB_EXP_NAME=moe_train_eval_harness_test
@@ -29,28 +29,32 @@ DISTRIBUTED_ARGS="
 "
 
 GPT_ARGS="
-    --num-layers 12 \
-    --hidden-size 768 \
-    --num-attention-heads 12 \
+    --num-layers 24 \
+    --hidden-size 2048 \
+    --num-attention-heads 16 \
     --seq-length 2048 \
     --max-position-embeddings 2048 \
-    --micro-batch-size 64 \
-    --global-batch-size 1024 \
-    --lr 0.00015 \
-    --train-iters 570000 \
-    --lr-decay-iters 570000 \
+    --micro-batch-size 6 \
+    --global-batch-size 1152 \
+    --lr 7.5e-5 \
+    --override-opt_param-scheduler \
+    --train-iters 290000 \
+    --lr-decay-iters 290000 \
     --lr-decay-style cosine \
-    --min-lr 1.0e-5 \
+    --min-lr 1.0e-6 \
     --weight-decay 0.0 \
     --lr-warmup-fraction .01 \
     --clip-grad 1.0 \
     --fp16 \
     --recompute-granularity selective \
     --use-flash-attn \
-    --accumulate-allreduce-grads-in-fp32  
-    --attention-dropout 0.0 
-    --hidden-dropout 0.0
-    --swiglu
+    --accumulate-allreduce-grads-in-fp32 \
+    --attention-dropout 0.0 \
+    --hidden-dropout 0.0 \
+    --swiglu \
+    --position-embedding-type rope \
+    --use-rotary-position-embeddings \
+    --adam-beta2 0.95
     "
     #--fp8-format hybrid 
     #--transformer-impl transformer_engine
@@ -66,7 +70,7 @@ DATA_ARGS="
 "
 
 OUTPUT_ARGS="
-    --log-interval 10 \
+    --log-interval 1 \
     --save-interval 500 \
     --eval-interval 50 \
     --eval-iters 50 \
