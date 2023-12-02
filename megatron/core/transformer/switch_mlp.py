@@ -205,6 +205,8 @@ class SwitchMLP(MegatronModule):
         with profile(activities=[
                                 ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
             with record_function("model_inference"):
+                test_tensor = torch.randn((10000,10000)).to("cuda:0")
+                torch.sum(test_tensor)
                 for expert_num, expert in enumerate(self.local_experts):
                     local_expert_index = self.local_expert_indices[expert_num]
                     local_indices = (global_indices == local_expert_index).nonzero()
