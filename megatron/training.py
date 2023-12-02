@@ -48,6 +48,7 @@ from megatron.utils import throughput_calculator
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.utils import report_memory
 from megatron.model.vision.knn_monitor import compute_feature_bank
+from megatron.eval_harness import Evaluator
 
 
 def print_datetime(string):
@@ -809,6 +810,19 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 # Collect only the objects created and used in evaluation.
                 gc.collect(generation=0)
 
+        # Run evaluation harness
+        if args.run_eval_harness and args.eval_harness_interval and \
+            iteration % args.eval_harness_interval == 0:
+                if args.manual_gc and args.manual_gc_eval:
+                    # Collect all objects.
+                    gc.collect()
+                prefix = 'iteration {}'.format(iteration)
+                run_evaluation_harness_print_results(prefix, model, iteration, True)
+                if args.manual_gc and args.manual_gc_eval:
+                    # Collect only the objects created and used in evaluation.
+                    gc.collect(generation=0)
+
+
         # Checkpointing
         saved_checkpoint = False
         if args.exit_signal_handler:
@@ -971,6 +985,7 @@ def evaluate(forward_step_func,
 
     return total_loss_dict, collected_non_loss_data, False
 
+
 def evaluate_and_print_results(prefix, forward_step_func,
                                data_iterator, model,
                                iteration, process_non_loss_data_func, config,
@@ -1025,6 +1040,42 @@ def evaluate_and_print_results(prefix, forward_step_func,
     print_rank_last('-' * length)
     print_rank_last(string)
     print_rank_last('-' * length)
+
+
+def run_evaluation_harness_print_results(prefix, model, iteration, write_to_wandb=True):
+    """Helper function to run evaluation harness and dump results on screen."""
+    
+    # Turn on evaluation mode which disables dropout.
+    for model_module in model:
+        model_module.eval()
+
+    wandb_writer = None
+
+    if write_to_wandb:
+        wandb_writer = get_wandb_writer()
+
+    evaluator = Evaluator(model=model)
+    results = evaluator.evaluate()
+
+    string = ' evaluation harness results at {} | '.format(prefix)
+    for key in results:
+        string += '{} value: {:.6E} | '.format(key, results[key])
+
+        if is_last_rank():
+            print(wandb_writer)
+        if wandb_writer and is_last_rank():
+            wandb_writer.log({
+                '{} eval_harness'.format(key): results[key]},
+                iteration)
+
+    length = len(string) + 1
+    print_rank_last('-' * length)
+    print_rank_last(string)
+    print_rank_last('-' * length)
+
+    # Move model back to the train mode.
+    for model_module in model:
+        model_module.train()    
 
 
 def cyclic_iter(iter):
@@ -1101,16 +1152,18 @@ def build_train_valid_test_data_loaders(
         do_train = train_dataloader is not None and args.train_iters > 0
         do_valid = valid_dataloader is not None and args.eval_iters > 0
         do_test = test_dataloader is not None and args.eval_iters > 0
+        run_eval_harness = args.eval_harness_tasks> 0
         flags = torch.cuda.LongTensor(
-            [int(do_train), int(do_valid), int(do_test)])
+            [int(do_train), int(do_valid), int(do_test), int(run_eval_harness)])
     else:
-        flags = torch.cuda.LongTensor([0, 0, 0])
+        flags = torch.cuda.LongTensor([0, 0, 0, 0])
 
     torch.distributed.broadcast(flags, 0)
 
     args.do_train = getattr(args, "do_train", False) or flags[0].item()
     args.do_valid = getattr(args, "do_valid", False) or flags[1].item()
     args.do_test = getattr(args, "do_test", False) or flags[2].item()
+    args.run_eval_harness = getattr(args, "run_eval_harness", False) or flags[3].item()
 
     return train_dataloader, valid_dataloader, test_dataloader
 
