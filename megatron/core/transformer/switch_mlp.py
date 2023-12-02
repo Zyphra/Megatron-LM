@@ -41,7 +41,8 @@ def sinkhorn(cost, tol=0.0001):
     return d1 * cost * d0.unsqueeze(1)
 
 def save_token_count(token_count, layer, iteration, router_profiling_path):
-    token_count_list = token_count.cpu().tolist()    
+    token_count_list = token_count.cpu().tolist()
+    print('saving token counts to', router_profiling_path)
     with open(os.path.join(router_profiling_path, 'token_counts.pkl'), 'ab') as file:
         pickle.dump([iteration, layer, token_count_list], file)
 
