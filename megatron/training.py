@@ -565,7 +565,8 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
         'routing_block1',
         'bias_scatter',
         'expert_fwd',
-        'sinkhorn']
+        'sinkhorn',
+        'expert_idx']
 
     # Calculate batch size.
     batch_size = args.micro_batch_size * args.data_parallel_size * \
