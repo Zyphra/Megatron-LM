@@ -123,7 +123,7 @@ class SwitchMLP(MegatronModule):
                     masked_route[mask] = - float('inf')
                     max_prob_2, max_ind_2 = torch.max(masked_route, dim=1)
         else:
-            route = torch.softmax(route, dim=1)
+            route = torch.softmax(route, dim=0)
             max_prob, max_ind = torch.max(route, dim=1)
             if self.routing == 'top2':
                 masked_route = route.clone()
@@ -229,7 +229,7 @@ class SwitchMLP(MegatronModule):
                     output_bias_total_2 / parallel_state.get_tensor_model_parallel_world_size()
                 )
 
-        output_total = output_total * max_prob
+        output_total = output_total # * max_prob
         if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
             output_total_2 = output_total_2 * max_prob_2
             output_total = output_total + output_total_2
