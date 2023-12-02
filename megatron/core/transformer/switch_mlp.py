@@ -203,7 +203,7 @@ class SwitchMLP(MegatronModule):
         if self.config.timers is not None:
             self.config.timers('routing_loop', log_level=2).start()
         with profile(activities=[
-                                ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+                                 ProfilerActivity.CUDA], record_shapes=True) as prof:
             with record_function("model_inference"):
                 test_tensor = torch.randn((10000,10000)).to("cuda:0")
                 torch.sum(test_tensor)
