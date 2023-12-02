@@ -202,32 +202,32 @@ class SwitchMLP(MegatronModule):
 
         if self.config.timers is not None:
             self.config.timers('routing_loop', log_level=2).start()
-                for expert_num, expert in enumerate(self.local_experts):
-                    if self.config.timers is not None:
-                        self.config.timers('expert_idx', log_level=2).start()
-                    local_expert_index = self.local_expert_indices[expert_num]
-                    local_indices = (global_indices == local_expert_index).nonzero()
-                    hidden = global_hidden_states[local_indices, :]
-                    if self.config.timers is not None:
-                        self.config.timers('expert_idx').stop()
-                    if self.config.timers is not None:
-                        self.config.timers('expert_fwd', log_level=2).start()
-                    output, output_bias = expert(hidden)
-                    if self.config.timers is not None:
-                        self.config.timers('expert_fwd').stop()
-                    output_total[local_indices, :] = output
-                    if self.add_bias:
-                        output_bias = output_bias.expand_as(output)
-                        output_bias_total[local_indices, :] = output_bias
-        
-                    if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
-                        local_indices = (global_indices_2 == local_expert_index).nonzero()
-                        hidden = global_hidden_states[local_indices, :]
-                        output, output_bias = expert(hidden)
-                        output_total_2[local_indices, :] = output
-                        if self.add_bias:
-                            output_bias = output_bias.expand_as(output)
-                            output_bias_total_2[local_indices, :] = output_bias
+        for expert_num, expert in enumerate(self.local_experts):
+            if self.config.timers is not None:
+                self.config.timers('expert_idx', log_level=2).start()
+            local_expert_index = self.local_expert_indices[expert_num]
+            local_indices = (global_indices == local_expert_index).nonzero()
+            hidden = global_hidden_states[local_indices, :]
+            if self.config.timers is not None:
+                self.config.timers('expert_idx').stop()
+            if self.config.timers is not None:
+                self.config.timers('expert_fwd', log_level=2).start()
+            output, output_bias = expert(hidden)
+            if self.config.timers is not None:
+                self.config.timers('expert_fwd').stop()
+            output_total[local_indices, :] = output
+            if self.add_bias:
+                output_bias = output_bias.expand_as(output)
+                output_bias_total[local_indices, :] = output_bias
+
+            if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
+                local_indices = (global_indices_2 == local_expert_index).nonzero()
+                hidden = global_hidden_states[local_indices, :]
+                output, output_bias = expert(hidden)
+                output_total_2[local_indices, :] = output
+                if self.add_bias:
+                    output_bias = output_bias.expand_as(output)
+                    output_bias_total_2[local_indices, :] = output_bias
         
         if  self.config.timers is not None:
             self.config.timers('routing_loop').stop()
