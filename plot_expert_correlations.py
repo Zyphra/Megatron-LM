@@ -13,7 +13,7 @@ def load_data(file_path):
             except EOFError:
                 break
 
-def plot_token_counts(file_path, iteration, start_expert, output_path):
+def plot_token_counts(file_path, iteration, start_expert, start_layer, output_path):
     data = list(load_data(file_path))
     idx_list = [entry[2] for entry in data if entry[0] == iteration]
 
@@ -23,10 +23,10 @@ def plot_token_counts(file_path, iteration, start_expert, output_path):
 
     # Extracting counts
     E = max(max(sublist) for sublist in idx_list) + 1
-    start_idx = idx_list[0]
+    start_idx = idx_list[start_layer - 1]
     mask = (torch.tensor(start_idx) == start_expert).nonzero(as_tuple=True)[0]
     counts = []
-    for idx in idx_list:
+    for idx in idx_list[start_layer - 1]:
         idx_tensor = torch.tensor(idx)
         idx_sub = F.one_hot(idx_tensor[mask], num_classes=E)
         counts.append(torch.sum(idx_sub, dim=0))
@@ -35,7 +35,7 @@ def plot_token_counts(file_path, iteration, start_expert, output_path):
     counts_tensor = torch.stack([torch.sort(c, descending=True)[0] for c in counts])
 
     # Create the stackplot
-    x_values = torch.arange(counts_tensor.shape[0])
+    x_values = torch.arange(start_layer, counts_tensor.shape[0] + start_layer)
     counts_transposed = counts_tensor.T
     plt.figure(figsize=(10, 10))
     plt.stackplot(x_values, *counts_transposed, edgecolor='black')
@@ -47,14 +47,15 @@ def plot_token_counts(file_path, iteration, start_expert, output_path):
     plt.close()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 5:
-        print("Usage: python script.py token_counts.pkl iteration start_expert output_path")
+    if len(sys.argv) != 6:
+        print("Usage: python script.py token_counts.pkl iteration start_expert start_layer output_path")
         sys.exit(1)
 
     file_path = sys.argv[1]
     iteration = int(sys.argv[2])
     start_expert = int(sys.argv[3])
-    output_path = sys.argv[4]
+    start_layer = int(sys.argv[4])
+    output_path = sys.argv[5]
 
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
