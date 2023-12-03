@@ -17,7 +17,7 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from .mlp import MLP, MLPSubmodules
 
 
-def sinkhorn(cost, tol=0.0001):
+def sinkhorn(cost, tol=0.5):
     "Sinkhorn based MoE routing function"
     cost = torch.exp(2.0 * cost)
     d0 = torch.ones(cost.size(0), device=cost.device, dtype=cost.dtype)
