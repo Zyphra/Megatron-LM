@@ -177,7 +177,8 @@ class SwitchMLP(MegatronModule):
                 token_count = torch.stack([torch.bincount(global_indices, minlength=args.num_experts),
                                            torch.bincount(global_indices_2, minlength=args.num_experts)])
             save_token_count(token_count, self.layer, args.curr_iteration, args.router_profiling_path)
-            save_global_indices(global_indices, self.layer, args.curr_iteration, args.router_profiling_path)
+            if args.curr_iteration % 100 == 0:
+                save_global_indices(global_indices, self.layer, args.curr_iteration, args.router_profiling_path)
 
         output_total = torch.zeros_like(global_hidden_states)
         if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
