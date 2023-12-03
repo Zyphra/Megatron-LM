@@ -19,7 +19,7 @@ from .mlp import MLP, MLPSubmodules
 
 def sinkhorn(cost, tol=0.0001):
     "Sinkhorn based MoE routing function"
-    cost = torch.exp(3.0 * cost)
+    cost = torch.exp(2.0 * cost)
     d0 = torch.ones(cost.size(0), device=cost.device, dtype=cost.dtype)
     # d1 = torch.ones(cost.size(1), device=cost.device, dtype=cost.dtype)
     d1 = 1 / (cost.size(1) * torch.sum(cost, 0))
