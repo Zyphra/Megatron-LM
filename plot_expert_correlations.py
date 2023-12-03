@@ -22,7 +22,7 @@ def plot_token_counts(file_path, iteration, output_path):
         return
 
     # Extracting counts
-    E = max(max(sublist) for sublist in idx_list)
+    E = max(max(sublist) for sublist in idx_list) + 1
     start_idx = idx_list[0]
     mask = (torch.tensor(start_idx) == 0).nonzero(as_tuple=True)[0]
     counts = []
