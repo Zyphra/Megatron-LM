@@ -47,13 +47,13 @@ def plot_token_counts(file_path, iteration, start_expert, output_path):
     plt.close()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("Usage: python script.py token_counts.pkl iteration output_path")
+    if len(sys.argv) != 5:
+        print("Usage: python script.py token_counts.pkl iteration start_expert output_path")
         sys.exit(1)
 
     file_path = sys.argv[1]
     iteration = int(sys.argv[2])
-    start_expert = int(sys.argv[2])
+    start_expert = int(sys.argv[3])
     output_path = sys.argv[4]
 
     if not os.path.exists(file_path):
