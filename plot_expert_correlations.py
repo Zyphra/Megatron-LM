@@ -61,4 +61,4 @@ if __name__ == "__main__":
         print(f"File not found: {file_path}")
         sys.exit(1)
 
-    plot_token_counts(file_path, iteration, start_expert, output_path)
+    plot_token_counts(file_path, iteration, start_expert, start_layer, output_path)
