@@ -27,7 +27,9 @@ def sinkhorn(cost, tol=0.5):
     eps = 0.00000001
     error = 1e9
     d0_old = d0
-    while error > tol:
+    loop_count = 0
+    while error > tol or loop_count < 1:
+        loop_count += 1
         d0 = (1 / d0.size(0)) * 1 / (torch.sum(d1 * cost, 1) + eps)
         d1 = (1 / d1.size(0)) * 1 / (torch.sum(d0.unsqueeze(1) * cost, 0) + eps)
         error = torch.mean(torch.abs(d0_old - d0))
