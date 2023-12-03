@@ -21,7 +21,6 @@ def plot_token_counts(file_path, iteration, output_path):
         print(f"No data found for iteration {iteration}")
         return
 
-    # Extracting counts
     E = max(max(sublist) for sublist in idx_list)
     start_idx = idx_list[0]
     mask = (torch.tensor(start_idx) == 0).nonzero(as_tuple=True)[0]
@@ -31,10 +30,8 @@ def plot_token_counts(file_path, iteration, output_path):
         idx_sub = F.one_hot(idx_tensor[mask], num_classes=E)
         counts.append(torch.sum(idx_sub, dim=0))
 
-    # Sorting counts in decreasing order
     counts_tensor = torch.stack([torch.sort(c, descending=True)[0] for c in counts])
 
-    # Create the stackplot
     x_values = torch.arange(counts_tensor.shape[0])
     counts_transposed = counts_tensor.T
     plt.figure(figsize=(10, 10))
