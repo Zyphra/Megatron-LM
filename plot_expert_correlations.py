@@ -26,7 +26,7 @@ def plot_token_counts(file_path, iteration, start_expert, start_layer, output_pa
     start_idx = idx_list[start_layer - 1]
     mask = (torch.tensor(start_idx) == start_expert).nonzero(as_tuple=True)[0]
     counts = []
-    for idx in idx_list[start_layer - 1]:
+    for idx in idx_list[(start_layer - 1):]:
         idx_tensor = torch.tensor(idx)
         idx_sub = F.one_hot(idx_tensor[mask], num_classes=E)
         counts.append(torch.sum(idx_sub, dim=0))
