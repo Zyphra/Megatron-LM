@@ -17,20 +17,21 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from .mlp import MLP, MLPSubmodules
 
 
-def sinkhorn(cost, tol=0.0001):
+def sinkhorn(cost, tol=0.5):
     "Sinkhorn based MoE routing function"
     cost = torch.exp(cost)
     d0 = torch.ones(cost.size(0), device=cost.device, dtype=cost.dtype)
-    d1 = torch.ones(cost.size(1), device=cost.device, dtype=cost.dtype)
+    # d1 = torch.ones(cost.size(1), device=cost.device, dtype=cost.dtype)
+    d1 = 1 / (cost.size(1) * torch.sum(cost, 0))
 
     eps = 0.00000001
     error = 1e9
-    d1_old = d1
+    d0_old = d0
     while error > tol:
         d0 = (1 / d0.size(0)) * 1 / (torch.sum(d1 * cost, 1) + eps)
         d1 = (1 / d1.size(0)) * 1 / (torch.sum(d0.unsqueeze(1) * cost, 0) + eps)
-        error = torch.mean(torch.abs(d1_old - d1))
-        d1_old = d1
+        error = torch.mean(torch.abs(d0_old - d0))
+        d0_old = d0
     return d1 * cost * d0.unsqueeze(1)
 
 def save_token_count(token_count, layer, iteration, router_profiling_path):
@@ -123,7 +124,7 @@ class SwitchMLP(MegatronModule):
                     masked_route[mask] = - float('inf')
                     max_prob_2, max_ind_2 = torch.max(masked_route, dim=1)
         else:
-            route = torch.softmax(route, dim=0)
+            route = torch.softmax(route, dim=1)
             max_prob, max_ind = torch.max(route, dim=1)
             if self.routing == 'top2':
                 masked_route = route.clone()
