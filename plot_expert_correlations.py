@@ -13,7 +13,7 @@ def load_data(file_path):
             except EOFError:
                 break
 
-def plot_token_counts(file_path, iteration, output_path):
+def plot_token_counts(file_path, iteration, start_expert, output_path):
     data = list(load_data(file_path))
     idx_list = [entry[2] for entry in data if entry[0] == iteration]
 
@@ -24,7 +24,7 @@ def plot_token_counts(file_path, iteration, output_path):
     # Extracting counts
     E = max(max(sublist) for sublist in idx_list) + 1
     start_idx = idx_list[0]
-    mask = (torch.tensor(start_idx) == 0).nonzero(as_tuple=True)[0]
+    mask = (torch.tensor(start_idx) == start_expert).nonzero(as_tuple=True)[0]
     counts = []
     for idx in idx_list:
         idx_tensor = torch.tensor(idx)
@@ -53,10 +53,11 @@ if __name__ == "__main__":
 
     file_path = sys.argv[1]
     iteration = int(sys.argv[2])
-    output_path = sys.argv[3]
+    start_expert = int(sys.argv[2])
+    output_path = sys.argv[4]
 
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
         sys.exit(1)
 
-    plot_token_counts(file_path, iteration, output_path)
+    plot_token_counts(file_path, iteration, start_expert, output_path)
