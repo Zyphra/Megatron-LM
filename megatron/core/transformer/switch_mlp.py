@@ -170,14 +170,15 @@ class SwitchMLP(MegatronModule):
                     args.l_aux += torch.sum(me_2 * ce_2) * self.config.num_moe_experts
 
         # Collect token count for each expert and save to file
-        if self.router_profiling_interval and (args.curr_iteration % self.router_profiling_interval == 0) and args.curr_iteration > 0:
+        if (self.router_profiling_interval) and (args.curr_iteration % self.router_profiling_interval == 0) 
+            and args.curr_iteration > 0 and torch.distributed.get_rank() == 0:
             if self.routing == 'sinkhorn' or self.routing == 'top1':
                 token_count = torch.bincount(global_indices, minlength=args.num_experts)
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 token_count = torch.stack([torch.bincount(global_indices, minlength=args.num_experts),
                                            torch.bincount(global_indices_2, minlength=args.num_experts)])
             save_token_count(token_count, self.layer, args.curr_iteration, args.router_profiling_path)
-            if args.curr_iteration % 100 == 0 and torch.distributed.get_rank() == 0:
+            if args.curr_iteration % 100 == 0:
                 idx = global_indices.cpu().tolist()
                 save_global_indices(idx, self.layer, args.curr_iteration, args.router_profiling_path)
 
