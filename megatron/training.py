@@ -459,6 +459,12 @@ def train_step(forward_step_func, data_iterator,
     update_successful, grad_norm, num_zeros_in_grad = optimizer.step(args, timers)
     timers('optimizer').stop()
     if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
+    print('PLACED SNAPSHOT JUST BELOW')
+    if args.curr_iteration == 2:
+        snapshot = torch.cuda.memory._snapshot()
+        from pickle import dump
+        with open('snapshot.pickle', 'wb') as f:
+            dump(snapshot, f)
 
     # Gather params.
     if update_successful:
