@@ -107,7 +107,7 @@ class SwitchMLP(MegatronModule):
             if self.training:
                 with torch.no_grad():
                     norm_route = self.route_algo(
-                        route.detach().to(dtype=torch.float32), self.layer
+                        route.detach().to(dtype=torch.float32), layer=self.layer
                     )  # explicit fp32 conversion for stability
                     _, max_ind = torch.max(norm_route, dim=1)
                 route = self.router_activation(route)
