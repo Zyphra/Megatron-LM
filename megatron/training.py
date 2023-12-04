@@ -460,7 +460,7 @@ def train_step(forward_step_func, data_iterator,
     timers('optimizer').stop()
     if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
     
-    if args.curr_iteration == 3 and torch.distributed.get_rank() == 0:
+    if args.enable_manual_profiling and args.curr_iteration == 3 and torch.distributed.get_rank() == 0:
         snapshot = torch.cuda.memory._snapshot()
         from pickle import dump
         with open('snapshot.pickle', 'wb') as f:
