@@ -156,7 +156,8 @@ class ParallelMLP(MegatronModule):
 def sinkhorn(cost, tol=0.0001):
     cost = torch.exp(cost)
     d0 = torch.ones(cost.size(0), device=cost.device, dtype=cost.dtype)
-    d1 = torch.ones(cost.size(1), device=cost.device, dtype=cost.dtype)
+    # d1 = torch.ones(cost.size(1), device=cost.device, dtype=cost.dtype)
+    d1 = 1 / (cost.size(1) * torch.sum(cost, 0))
     
     eps = 0.00000001
     error = 1e9
