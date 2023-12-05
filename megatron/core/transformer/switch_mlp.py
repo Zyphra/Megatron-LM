@@ -73,6 +73,8 @@ class SwitchMLP(MegatronModule):
         for _ in range(self.num_local_experts):
             expert = MLP(self.config, submodules, is_expert=True)
             self.local_experts.append(expert)
+        if args.residual_moe:
+            self.fixed_mlp = MLP(self.config, submodules, is_expert=False)
 
     def gather_indices(self, local_indices):
         """ Gather tensors and concatenate along the first dimension."""
@@ -261,16 +263,17 @@ class SwitchMLP(MegatronModule):
 
         if self.config.timers is not None:
             self.config.timers('final_route', log_level=2).start()
-        output_total = output_total * max_prob
         if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
-            output_total_2 = output_total_2 * max_prob_2
-            output_total = output_total + output_total_2
+            output_total = (output_total * max_prob + output_total_2 * max_prob_2) / (max_prob + max_prob_2)
+        if args.residual_moe:
+            output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
+            output_total += output_mlp
         output_total = output_total.view(hidden_shape)
         if self.add_bias:
-            output_bias_total = output_bias_total * max_prob
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
-                output_bias_total_2 = output_bias_total_2 * max_prob_2
-                output_bias_total = output_bias_total + output_bias_total_2
+                output_bias_total = (output_bias_total * max_prob + output_bias_total_2 * max_prob_2) / (max_prob + max_prob_2)
+            if args.residual_moe:
+                output_bias_total += output_bias_mlp
             output_bias_total = output_bias_total.view(hidden_shape)
         else:
             output_bias_total = None
