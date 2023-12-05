@@ -66,6 +66,10 @@ The schedule looks like this:
 
 <img src="images/lr_sched.png" alt="Infinite LR schedule" width="50%">
 
+## Time and Memory Profiling
+
+We introduced calls of `torch.cuda.nvtx` and `torch.cuda.memory` for time and memory profiling, which are both activated by adding the flag `--enable-manual-profiling`. See [this link](https://github.com/NERSC/sc22-dl-tutorial/blob/21ea7dc9419a474cfa40c9790adb935554c4c590/README.md) and [this link](https://zdevito.github.io/2022/12/09/memory-traces.html) for more details. Time profiling can also be activated using `--timing-log-level <int>`. 
+
 ## Expert Routing 
 
 The default expert routing algorithm is sinkhorn ([Clark et al., ICML 2022](https://proceedings.mlr.press/v162/clark22a.html)). To choose the routing algorithm, in ```/opt/Megatron-LM/examples/pretrain_gpt_distributed.sh``` include the flag `--routing-mode` in `GPT_ARGS` with options `sinkhorn`, `top1`, or `top2`. See [Fedus et al. 2022](https://arxiv.org/abs/2209.01667) for an overview and references on expert routing algorithms. Currently, `top1` and `top2` choices do not keep balancing into account, i.e. it is possible that different experts will receive disproportionately more tokens than others, which is far from compute-optimal.
