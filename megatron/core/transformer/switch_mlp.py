@@ -17,7 +17,7 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from .mlp import MLP, MLPSubmodules
 
 
-def sinkhorn(cost, tol=0.0001):
+def sinkhorn(cost, layer, tol=0.0001):
     "Sinkhorn based MoE routing function"
     cost = torch.exp(2.0 * cost)
     d0 = torch.ones(cost.size(0), device=cost.device, dtype=cost.dtype)
@@ -34,6 +34,8 @@ def sinkhorn(cost, tol=0.0001):
         d1 = (1 / d1.size(0)) * 1 / (torch.sum(d0.unsqueeze(1) * cost, 0) + eps)
         error = torch.mean(torch.abs(d1_old - d1))
         d1_old = d1
+    if torch.distributed.get_rank() == 0:
+        print('LOOP COUNT:', loop_count, 'layer:', layer, '\n')
     return d1 * cost * d0.unsqueeze(1)
 
 def save_token_count(token_count, layer, iteration, router_profiling_path):
@@ -106,7 +108,7 @@ class SwitchMLP(MegatronModule):
             if self.training:
                 with torch.no_grad():
                     norm_route = self.route_algo(
-                        route.detach().to(dtype=torch.float32)
+                        route.detach().to(dtype=torch.float32), layer=self.layer
                     )  # explicit fp32 conversion for stability
                     _, max_ind = torch.max(norm_route, dim=1)
                 route = self.router_activation(route)
