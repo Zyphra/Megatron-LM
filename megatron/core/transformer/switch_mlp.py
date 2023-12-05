@@ -234,6 +234,8 @@ class SwitchMLP(MegatronModule):
         if  self.config.timers is not None:
             self.config.timers('routing_loop').stop()
 
+        if args.residual_moe:
+            output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
 
         if self.config.timers is not None:
             self.config.timers('ep_scatter', log_level=2).start()
@@ -242,6 +244,10 @@ class SwitchMLP(MegatronModule):
             output_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                 output_total
             )
+            if args.residual_moe:
+                output_mlp = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
+                    output_mlp
+                )
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_total_2 = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                 output_total_2
@@ -256,6 +262,10 @@ class SwitchMLP(MegatronModule):
                     output_bias_total_2 = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                     output_bias_total_2
                 )
+                if args.residual_moe:
+                    output_bias_mlp = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
+                        output_bias_mlp
+                    )
                 
                 # bias is duplicated across tensor parallelism ranks;
                 # reduce scatter reduces bias across tensor parallel_ranks
@@ -277,7 +287,6 @@ class SwitchMLP(MegatronModule):
         if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
             output_total = (output_total * max_prob + output_total_2 * max_prob_2) / (max_prob + max_prob_2)
         if args.residual_moe:
-            output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
             output_total += output_mlp
         output_total = output_total.view(hidden_shape)
         if self.add_bias:
