@@ -61,10 +61,6 @@ class SwitchMLP(MegatronModule):
         self.expert_parallel_size = parallel_state.get_expert_model_parallel_world_size()
 
         assert self.config.num_moe_experts % self.expert_parallel_size == 0
-        if layer < "TOTAL_LAYERS" - 2:
-            self.num_local_experts /= 2
-            self.expert_parallel_size /=2
-            "data parallel size" *= 2
         self.num_local_experts = self.config.num_moe_experts // self.expert_parallel_size
         local_expert_indices_offset = (
             parallel_state.get_expert_model_parallel_rank() * self.num_local_experts
@@ -72,8 +68,6 @@ class SwitchMLP(MegatronModule):
         self.local_expert_indices = [
             local_expert_indices_offset + i for i in range(self.num_local_experts)
         ]
-        ### if num_loc_exp=exp_par_size=4 and i have 8 GPU's, do some indices identify with same expert?
-        ### this should be accounted for in the lines below
 
         self.local_experts = torch.nn.ModuleList()
         for _ in range(self.num_local_experts):
@@ -86,7 +80,6 @@ class SwitchMLP(MegatronModule):
         """ Gather tensors and concatenate along the first dimension."""
         group = get_tensor_and_expert_parallel_group()
         world_size = torch.distributed.get_world_size(group=group)
-        ### in the example above, is world_size=2/TP?
         # Bypass the function if we are using only 1 GPU.
         if world_size == 1:
             return local_indices
@@ -156,7 +149,6 @@ class SwitchMLP(MegatronModule):
 
         if self.config.timers is not None:
             self.config.timers('routing_gather', log_level=2).start()
-        ### sequence_parallel is when sequence parallel dimension > 1? why should i do this gather when EP_size > 1?
         if self.sequence_parallel or (self.expert_parallel_size > 1):
             global_hidden_states = tensor_parallel.gather_from_sequence_parallel_region_to_moe(
                 hidden_states
