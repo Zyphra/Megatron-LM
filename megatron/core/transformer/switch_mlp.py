@@ -75,7 +75,7 @@ class SwitchMLP(MegatronModule):
             self.local_experts.append(expert)
         self.switch_moe = 0
         if 1 == 1:
-            self.fixed_mlp = MLP(self.config, submodules, is_expert=False)
+            self.fixed_mlp = MLP(self.config, submodules, is_expert=True)
 
     def gather_indices(self, local_indices):
         """ Gather tensors and concatenate along the first dimension."""
