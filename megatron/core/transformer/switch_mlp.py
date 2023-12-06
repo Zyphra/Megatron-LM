@@ -224,12 +224,14 @@ class SwitchMLP(MegatronModule):
                     output_bias_total_2[local_indices, :] = output_bias
         if  self.config.timers is not None:
             self.config.timers('routing_loop').stop()
-        print('SHAPE OF TOTAL EXPERT OUTPUT:', output_total.shape, output_bias_total.shape)
+        # print('SHAPE OF TOTAL EXPERT OUTPUT:', output_total.shape, output_bias_total.shape)
+        print('SHAPE OF TOTAL EXPERT OUTPUT:', output_total.shape)
         
         if 1 == self.switch_moe:
             output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
             # output_mlp = output_mlp[:,None,:]
-            print('SHAPE OF RESIDUAL MLP:', output_mlp.shape, output_bias_mlp.shape)
+            # print('SHAPE OF RESIDUAL MLP:', output_mlp.shape, output_bias_mlp.shape)
+            print('SHAPE OF RESIDUAL MLP:', output_mlp.shape)
 
         if self.config.timers is not None:
             self.config.timers('ep_scatter', log_level=2).start()
