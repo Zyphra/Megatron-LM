@@ -74,7 +74,7 @@ class SwitchMLP(MegatronModule):
             expert = MLP(self.config, submodules, is_expert=True)
             self.local_experts.append(expert)
         self.switch_moe = 0
-        if 1 == self.switch_moe:
+        if 1 == 1:
             self.fixed_mlp = MLP(self.config, submodules, is_expert=False)
 
     def gather_indices(self, local_indices):
@@ -197,7 +197,8 @@ class SwitchMLP(MegatronModule):
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_bias_total_2 = torch.zeros_like(global_hidden_states)
 
-
+        output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
+        
         if self.config.timers is not None:
             self.config.timers('routing_loop', log_level=2).start()
         for expert_num, expert in enumerate(self.local_experts):
@@ -209,7 +210,7 @@ class SwitchMLP(MegatronModule):
             output, output_bias = expert(hidden)
             if self.config.timers is not None:
                 self.config.timers('expert_fwd').stop()
-            output_total[local_indices, :] = output
+            output_total[local_indices, :] = output + output_mlp[local_indices, :]
             if self.add_bias:
                 output_bias = output_bias.expand_as(output)
                 output_bias_total[local_indices, :] = output_bias
