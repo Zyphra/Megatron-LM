@@ -210,6 +210,7 @@ class SwitchMLP(MegatronModule):
             output, output_bias = expert(hidden)
             if self.config.timers is not None:
                 self.config.timers('expert_fwd').stop()
+            print('SHAPE OF OUTPUT AND OUTPUT_MLP:', output.shape, output_mlp.shape)
             output_total[local_indices, :] = output # + output_mlp[local_indices, :]
             if self.add_bias:
                 output_bias = output_bias.expand_as(output)
