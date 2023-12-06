@@ -73,7 +73,7 @@ class SwitchMLP(MegatronModule):
         for _ in range(self.num_local_experts):
             expert = MLP(self.config, submodules, is_expert=True)
             self.local_experts.append(expert)
-        self.switch_moe = 1
+        self.switch_moe = 0
         if 1 == self.switch_moe:
             self.fixed_mlp = MLP(self.config, submodules, is_expert=False)
 
