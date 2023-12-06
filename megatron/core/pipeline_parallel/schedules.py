@@ -128,9 +128,7 @@ def custom_backward(output, grad_output):
     assert isinstance(grad_output, (torch.Tensor, type(None))), (
         "grad_output == '%s'." % type(grad_output).__name__
     )
-    if grad_output is not None:
-        print('SHAPE OF OUTPUT AND GRAD_OUTPUT INSIDE SCHEDULES.PY:', output.shape, grad_output.shape)
-    print('SHAPE OF OUTPUT AND GRAD_OUTPUT INSIDE SCHEDULES.PY:', output.shape)
+    
     # Handle scalar output
     if grad_output is None:
         assert output.numel() == 1, "implicit grad requires scalar output."
