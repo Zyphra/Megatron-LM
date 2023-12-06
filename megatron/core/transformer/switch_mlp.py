@@ -229,6 +229,8 @@ class SwitchMLP(MegatronModule):
 
         if 1 == self.switch_moe:
             output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
+            output_mlp = output_mlp[:,None,:]
+            output_bias_mlp = output_bias_mlp[:,None,:]
             if torch.distributed.get_rank() == 0:
                 print('SHAPES OF RESIDUAL MLP:', output_mlp.shape, output_bias_mlp.shape)
 
