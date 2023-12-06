@@ -228,7 +228,7 @@ class SwitchMLP(MegatronModule):
         
         if 1 == self.switch_moe:
             output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
-            output_mlp = output_mlp[:,None,:]
+            # output_mlp = output_mlp[:,None,:]
             print('SHAPE OF RESIDUAL MLP:', output_mlp.shape, output_bias_mlp.shape)
 
         if self.config.timers is not None:
