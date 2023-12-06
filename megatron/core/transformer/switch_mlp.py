@@ -207,8 +207,6 @@ class SwitchMLP(MegatronModule):
             if self.config.timers is not None:
                 self.config.timers('expert_fwd', log_level=2).start()
             output, output_bias = expert(hidden)
-            if torch.distributed.get_rank() == 0:
-                print('SHAPES OF EXPERTS:', output.shape, output_bias.shape)
             if self.config.timers is not None:
                 self.config.timers('expert_fwd').stop()
             output_total[local_indices, :] = output
@@ -226,12 +224,12 @@ class SwitchMLP(MegatronModule):
                     output_bias_total_2[local_indices, :] = output_bias
         if  self.config.timers is not None:
             self.config.timers('routing_loop').stop()
-
+        print('SHAPES OF TOTAL EXPERT OUTPUT:', output_total.shape, output_bias_total.shape)
+        
         if 1 == self.switch_moe:
             output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
             output_mlp = output_mlp[:,None,:]
-            if torch.distributed.get_rank() == 0:
-                print('SHAPES OF RESIDUAL MLP:', output_mlp.shape, output_bias_mlp.shape)
+            print('SHAPES OF RESIDUAL MLP:', output_mlp.shape, output_bias_mlp.shape)
 
         if self.config.timers is not None:
             self.config.timers('ep_scatter', log_level=2).start()
