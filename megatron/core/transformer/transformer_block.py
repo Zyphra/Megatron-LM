@@ -57,12 +57,20 @@ class TransformerBlock(MegatronModule):
         #     coeff = self.layer_number
         #     self.norm_factor *= coeff
         def build_layer(layer_number):
-            layer = TransformerLayer(
+            if layer_number in [1, 2]:
+                layer = TransformerLayer(
                 config=self.config,
-                submodules=transformer_layer_spec.submodules,
+                submodules=gpt_layer_with_transformer_engine_spec.submodules,
                 layer_number=layer_number,
                 self_attn_mask_type=self.self_attn_mask_type,
             )
+            else:
+                layer = TransformerLayer(
+                    config=self.config,
+                    submodules=transformer_layer_spec.submodules,
+                    layer_number=layer_number,
+                    self_attn_mask_type=self.self_attn_mask_type,
+                )
             return layer
 
         if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
