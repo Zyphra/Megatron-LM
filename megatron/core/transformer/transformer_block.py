@@ -66,7 +66,7 @@ class TransformerBlock(MegatronModule):
                     self_attn_mask_type=self.self_attn_mask_type,
                 )
                 if torch.distributed.get_rank() == 0:
-                    print('LAYER:', layer, 'NO EXPERTS')
+                    print('LAYER:', layer_number, 'NO EXPERTS')
             else:
                 layer = TransformerLayer(
                     config=self.config,
