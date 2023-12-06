@@ -202,13 +202,13 @@ class SwitchMLP(MegatronModule):
             self.config.timers('routing_loop', log_level=2).start()
         for expert_num, expert in enumerate(self.local_experts):
             local_expert_index = self.local_expert_indices[expert_num]
-            ### in the example above, local_expert_index could be 7 even when there are 4 experts?
-            ### this means 4 GPUs are idle because local_indices is empty
             local_indices = (global_indices == local_expert_index).nonzero()
             hidden = global_hidden_states[local_indices, :]
             if self.config.timers is not None:
                 self.config.timers('expert_fwd', log_level=2).start()
             output, output_bias = expert(hidden)
+            if torch.distributed.get_rank() == 0:
+                print('SHAPES OF EXPERTS:', output.shape, output_bias.shape)
             if self.config.timers is not None:
                 self.config.timers('expert_fwd').stop()
             output_total[local_indices, :] = output
@@ -229,6 +229,8 @@ class SwitchMLP(MegatronModule):
 
         if 1 == self.switch_moe:
             output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
+            if torch.distributed.get_rank() == 0:
+                print('SHAPES OF RESIDUAL MLP:', output_mlp.shape, output_bias_mlp.shape)
 
         if self.config.timers is not None:
             self.config.timers('ep_scatter', log_level=2).start()
