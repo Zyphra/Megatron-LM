@@ -65,6 +65,7 @@ class SwitchMLP(MegatronModule):
         if layer in [5,6]:
             self.num_local_experts *= 2
             self.expert_parallel_size /=2
+        if torch.distributed.get_rank() == 0:
             print('LAYER:', layer, 'NUM LOCAL EXPERTS:', self.num_local_experts)
         local_expert_indices_offset = (
             parallel_state.get_expert_model_parallel_rank() * self.num_local_experts
