@@ -224,12 +224,12 @@ class SwitchMLP(MegatronModule):
                     output_bias_total_2[local_indices, :] = output_bias
         if  self.config.timers is not None:
             self.config.timers('routing_loop').stop()
-        print('SHAPES OF TOTAL EXPERT OUTPUT:', output_total.shape, output_bias_total.shape)
+        print('SHAPE OF TOTAL EXPERT OUTPUT:', output_total.shape, output_bias_total.shape)
         
         if 1 == self.switch_moe:
             output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
             output_mlp = output_mlp[:,None,:]
-            print('SHAPES OF RESIDUAL MLP:', output_mlp.shape, output_bias_mlp.shape)
+            print('SHAPE OF RESIDUAL MLP:', output_mlp.shape, output_bias_mlp.shape)
 
         if self.config.timers is not None:
             self.config.timers('ep_scatter', log_level=2).start()
@@ -238,10 +238,12 @@ class SwitchMLP(MegatronModule):
             output_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                 output_total
             )
+            print('SHAPE OF TOTAL EXPERT OUTPUT AFTER REDUCE SCATTER:', output_total.shape)
             if 1 == self.switch_moe:
                 output_mlp = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                     output_mlp
                 )
+                print('SHAPE OF RESIDUAL MLP AFTER REDUCE SCATTER:', output_mlp.shape)
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_total_2 = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                 output_total_2
