@@ -198,8 +198,9 @@ class SwitchMLP(MegatronModule):
             output_bias_total = torch.zeros_like(global_hidden_states)
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_bias_total_2 = torch.zeros_like(global_hidden_states)
-        print('SHAPE OF global_hidden_states:', global_hidden_states.shape)
-        output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
+        global_hidden_states_1 = global_hidden_states[:,None,:]
+        print('SHAPE OF global_hidden_states:', global_hidden_states_1.shape)
+        output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states_1)
         
         if self.config.timers is not None:
             self.config.timers('routing_loop', log_level=2).start()
@@ -215,7 +216,7 @@ class SwitchMLP(MegatronModule):
             if self.config.timers is not None:
                 self.config.timers('expert_fwd').stop()
             print('SHAPE OF OUTPUT AND OUTPUT_MLP:', output.shape, output_mlp.shape)
-            output_total[local_indices, :] = output + output_mlp[local_indices, :]
+            output_total[local_indices, :] = output # + output_mlp[local_indices, :]
             if self.add_bias:
                 output_bias = output_bias.expand_as(output)
                 output_bias_total[local_indices, :] = output_bias
@@ -231,6 +232,7 @@ class SwitchMLP(MegatronModule):
         if  self.config.timers is not None:
             self.config.timers('routing_loop').stop()
         # print('SHAPE OF TOTAL EXPERT OUTPUT:', output_total.shape, output_bias_total.shape)
+        output_total += output_mlp
         print('SHAPE OF TOTAL EXPERT OUTPUT:', output_total.shape)
         
         if 1 == self.switch_moe:
