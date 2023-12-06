@@ -14,6 +14,7 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
 from megatron.core.utils import make_sharded_tensor_for_checkpoint, make_viewless_tensor
+from megatron.core.models.gpt.gpt_layer_specs import gpt_layer_with_transformer_engine_spec
 
 
 class TransformerBlock(MegatronModule):
