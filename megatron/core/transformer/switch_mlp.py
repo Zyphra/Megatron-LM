@@ -61,32 +61,27 @@ class SwitchMLP(MegatronModule):
         self.expert_parallel_size = parallel_state.get_expert_model_parallel_world_size()
 
         assert self.config.num_moe_experts % self.expert_parallel_size == 0
-        if layer < "TOTAL_LAYERS" - 2:
-            self.num_local_experts /= 2
-            self.expert_parallel_size /=2
-            "data parallel size" *= 2
         self.num_local_experts = self.config.num_moe_experts // self.expert_parallel_size
+        if layer in [5,6]:
+            self.num_local_experts *= 2
+            self.expert_parallel_size /=2
+            print('LAYER:', layer, 'NUM LOCAL EXPERTS:', self.num_local_experts)
         local_expert_indices_offset = (
             parallel_state.get_expert_model_parallel_rank() * self.num_local_experts
         )
         self.local_expert_indices = [
             local_expert_indices_offset + i for i in range(self.num_local_experts)
         ]
-        ### if num_loc_exp=exp_par_size=4 and i have 8 GPU's, do some indices identify with same expert?
-        ### this should be accounted for in the lines below
 
         self.local_experts = torch.nn.ModuleList()
         for _ in range(self.num_local_experts):
             expert = MLP(self.config, submodules, is_expert=True)
             self.local_experts.append(expert)
-        if args.residual_moe:
-            self.fixed_mlp = MLP(self.config, submodules, is_expert=False)
 
     def gather_indices(self, local_indices):
         """ Gather tensors and concatenate along the first dimension."""
         group = get_tensor_and_expert_parallel_group()
         world_size = torch.distributed.get_world_size(group=group)
-        ### in the example above, is world_size=2/TP?
         # Bypass the function if we are using only 1 GPU.
         if world_size == 1:
             return local_indices
@@ -156,7 +151,6 @@ class SwitchMLP(MegatronModule):
 
         if self.config.timers is not None:
             self.config.timers('routing_gather', log_level=2).start()
-        ### sequence_parallel is when sequence parallel dimension > 1? why should i do this gather when EP_size > 1?
         if self.sequence_parallel or (self.expert_parallel_size > 1):
             global_hidden_states = tensor_parallel.gather_from_sequence_parallel_region_to_moe(
                 hidden_states
@@ -209,8 +203,6 @@ class SwitchMLP(MegatronModule):
             self.config.timers('routing_loop', log_level=2).start()
         for expert_num, expert in enumerate(self.local_experts):
             local_expert_index = self.local_expert_indices[expert_num]
-            ### in the example above, local_expert_index could be 7 even when there are 4 experts?
-            ### this means 4 GPUs are idle because local_indices is empty
             local_indices = (global_indices == local_expert_index).nonzero()
             hidden = global_hidden_states[local_indices, :]
             if self.config.timers is not None:
@@ -234,20 +226,12 @@ class SwitchMLP(MegatronModule):
         if  self.config.timers is not None:
             self.config.timers('routing_loop').stop()
 
-        if args.residual_moe:
-            output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
-
         if self.config.timers is not None:
             self.config.timers('ep_scatter', log_level=2).start()
         if self.sequence_parallel or (self.expert_parallel_size > 1):
-            ### what is this? should I apply it to output of self.fixed_mlp too?
             output_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                 output_total
             )
-            if args.residual_moe:
-                output_mlp = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
-                    output_mlp
-                )
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_total_2 = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                 output_total_2
@@ -262,10 +246,6 @@ class SwitchMLP(MegatronModule):
                     output_bias_total_2 = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                     output_bias_total_2
                 )
-                if args.residual_moe:
-                    output_bias_mlp = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
-                        output_bias_mlp
-                    )
                 
                 # bias is duplicated across tensor parallelism ranks;
                 # reduce scatter reduces bias across tensor parallel_ranks
@@ -286,14 +266,10 @@ class SwitchMLP(MegatronModule):
             self.config.timers('final_route', log_level=2).start()
         if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
             output_total = (output_total * max_prob + output_total_2 * max_prob_2) / (max_prob + max_prob_2)
-        if args.residual_moe:
-            output_total += output_mlp
         output_total = output_total.view(hidden_shape)
         if self.add_bias:
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_bias_total = (output_bias_total * max_prob + output_bias_total_2 * max_prob_2) / (max_prob + max_prob_2)
-            if args.residual_moe:
-                output_bias_total += output_bias_mlp
             output_bias_total = output_bias_total.view(hidden_shape)
         else:
             output_bias_total = None
