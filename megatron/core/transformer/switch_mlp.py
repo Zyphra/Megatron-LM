@@ -198,7 +198,7 @@ class SwitchMLP(MegatronModule):
             output_bias_total = torch.zeros_like(global_hidden_states)
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_bias_total_2 = torch.zeros_like(global_hidden_states)
-
+        print('SHAPE OF global_hidden_states:', global_hidden_states.shape)
         output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
         
         if self.config.timers is not None:
@@ -207,6 +207,8 @@ class SwitchMLP(MegatronModule):
             local_expert_index = self.local_expert_indices[expert_num]
             local_indices = (global_indices == local_expert_index).nonzero()
             hidden = global_hidden_states[local_indices, :]
+            print('SHAPE OF hidden:', hidden.shape)
+            print('SHAPE OF global_hidden_states INSIDE THE LOOP:', global_hidden_states.shape)
             if self.config.timers is not None:
                 self.config.timers('expert_fwd', log_level=2).start()
             output, output_bias = expert(hidden)
