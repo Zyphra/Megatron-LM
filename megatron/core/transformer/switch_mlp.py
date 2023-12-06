@@ -73,11 +73,9 @@ class SwitchMLP(MegatronModule):
         for _ in range(self.num_local_experts):
             expert = MLP(self.config, submodules, is_expert=True)
             self.local_experts.append(expert)
-        self.switch_moe = 0
-        if 1 == 1:
-            self.fixed_mlp = MLP(self.config, submodules, is_expert=True)
-        print('self.local_experts:', self.local_experts)
-        print('self.fixed_mlp:', self.fixed_mlp)
+        self.switch_moe = 1
+        if 1 == self.switch_moe:
+            self.fixed_mlp = MLP(self.config, submodules, is_expert=False)
 
     def gather_indices(self, local_indices):
         """ Gather tensors and concatenate along the first dimension."""
@@ -198,9 +196,6 @@ class SwitchMLP(MegatronModule):
             output_bias_total = torch.zeros_like(global_hidden_states)
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_bias_total_2 = torch.zeros_like(global_hidden_states)
-        # global_hidden_states_1 = global_hidden_states[:,None,:]
-        # print('SHAPE OF global_hidden_states:', global_hidden_states_1.shape)
-        # output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states_1)
         
         if self.config.timers is not None:
             self.config.timers('routing_loop', log_level=2).start()
@@ -208,19 +203,25 @@ class SwitchMLP(MegatronModule):
             local_expert_index = self.local_expert_indices[expert_num]
             local_indices = (global_indices == local_expert_index).nonzero()
             hidden = global_hidden_states[local_indices, :]
-            print('SHAPE OF hidden:', hidden.shape)
-            print('SHAPE OF global_hidden_states INSIDE THE LOOP:', global_hidden_states.shape)
             if self.config.timers is not None:
                 self.config.timers('expert_fwd', log_level=2).start()
             output, output_bias = expert(hidden)
-            output_mlp, output_bias_blp = self.fixed_mlp(hidden)
+            if 1 == self.switch_moe:
+                output_mlp, output_bias_mlp = self.fixed_mlp(hidden)
             if self.config.timers is not None:
                 self.config.timers('expert_fwd').stop()
-            print('SHAPE OF OUTPUT AND OUTPUT_MLP:', output.shape, output_mlp.shape)
-            output_total[local_indices, :] = output + output_mlp
+            if 1 == self.switch_moe:
+                output_total[local_indices, :] = output + output_mlp
+            else:
+                output_total[local_indices, :] = output
             if self.add_bias:
-                output_bias = output_bias.expand_as(output)
-                output_bias_total[local_indices, :] = output_bias
+                if 1 == self.switch_moe:
+                    output_bias = output_bias.expand_as(output)
+                    output_bias_mlp = output_bias_mlp.expand_as(output_mlp)
+                    output_bias_total[local_indices, :] = output_bias + output_bias_mlp
+                else:
+                    output_bias = output_bias.expand_as(output)
+                    output_bias_total[local_indices, :] = output_bias
 
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 local_indices = (global_indices_2 == local_expert_index).nonzero()
@@ -232,16 +233,7 @@ class SwitchMLP(MegatronModule):
                     output_bias_total_2[local_indices, :] = output_bias
         if  self.config.timers is not None:
             self.config.timers('routing_loop').stop()
-        # print('SHAPE OF TOTAL EXPERT OUTPUT:', output_total.shape, output_bias_total.shape)
-        # output_total += output_mlp
-        print('SHAPE OF TOTAL EXPERT OUTPUT:', output_total.shape)
         
-        if 1 == self.switch_moe:
-            output_mlp, output_bias_mlp = self.fixed_mlp(global_hidden_states)
-            # output_mlp = output_mlp[:,None,:]
-            # print('SHAPE OF RESIDUAL MLP:', output_mlp.shape, output_bias_mlp.shape)
-            print('SHAPE OF RESIDUAL MLP:', output_mlp.shape)
-
         if self.config.timers is not None:
             self.config.timers('ep_scatter', log_level=2).start()
         if self.sequence_parallel or (self.expert_parallel_size > 1):
@@ -249,12 +241,6 @@ class SwitchMLP(MegatronModule):
             output_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                 output_total
             )
-            print('SHAPE OF TOTAL EXPERT OUTPUT AFTER REDUCE SCATTER:', output_total.shape)
-            if 1 == self.switch_moe:
-                output_mlp = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
-                    output_mlp
-                )
-                print('SHAPE OF RESIDUAL MLP AFTER REDUCE SCATTER:', output_mlp.shape)
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_total_2 = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                 output_total_2
@@ -269,10 +255,6 @@ class SwitchMLP(MegatronModule):
                     output_bias_total_2 = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                     output_bias_total_2
                 )
-                if 0 == self.switch_moe:
-                    output_bias_mlp = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
-                        output_bias_mlp
-                    )
                 
                 # bias is duplicated across tensor parallelism ranks;
                 # reduce scatter reduces bias across tensor parallel_ranks
@@ -293,14 +275,10 @@ class SwitchMLP(MegatronModule):
             self.config.timers('final_route', log_level=2).start()
         if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
             output_total = (output_total * max_prob + output_total_2 * max_prob_2) / (max_prob + max_prob_2)
-        if 1 == self.switch_moe:
-            output_total += output_mlp
         output_total = output_total.view(hidden_shape)
         if self.add_bias:
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_bias_total = (output_bias_total * max_prob + output_bias_total_2 * max_prob_2) / (max_prob + max_prob_2)
-            if 1 == self.switch_moe:
-                output_bias_total += output_bias_mlp
             output_bias_total = output_bias_total.view(hidden_shape)
         else:
             output_bias_total = None
