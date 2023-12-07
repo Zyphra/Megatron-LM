@@ -1167,6 +1167,13 @@ def _add_validation_args(parser):
                        default=False, help='If set, bypass the training loop, '
                        'optionally do evaluation for validation/test, and exit.')
 
+    group.add_argument('--eval-harness-interval', type=int, default=1000,
+                       help='Interval between running evaluation on '
+                       'validation set.')
+    group.add_argument('--eval-harness-tasks', type=str, default="openbookqa",
+                       help="Pass in a comma separated task list.")
+
+
     return parser
 
 
