@@ -298,6 +298,11 @@ class _IndexReader(object):
             logging.INFO,
             f"> total number of documents: {self.document_indices.shape[0] - 1}",
         )
+        log_single_rank(
+            logger,
+            logging.INFO,
+            f"> total number of tokens: {numpy.sum(self.sequence_lengths)}",
+        )
 
     def __del__(self) -> None:
         """Clean up the object
