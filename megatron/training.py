@@ -994,7 +994,6 @@ def evaluate(forward_step_func,
 
     return total_loss_dict, collected_non_loss_data, False
 
-
 def evaluate_and_print_results(prefix, forward_step_func,
                                data_iterator, model,
                                iteration, process_non_loss_data_func, config,
