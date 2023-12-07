@@ -37,7 +37,7 @@ class MLP(MegatronModule):
     """
 
     def __init__(
-        self, config: TransformerConfig, submodules: MLPSubmodules, is_expert: bool = False
+        self, config: TransformerConfig, submodules: MLPSubmodules, is_expert: bool = False, ffn_hidden_ratio = 1
     ):
         super().__init__(config=config)
 
@@ -51,7 +51,7 @@ class MLP(MegatronModule):
         self.linear_fc1 = build_module(
             submodules.linear_fc1,
             self.config.hidden_size,
-            ffn_hidden_size,
+            ffn_hidden_size * ffn_hidden_ratio,
             config=self.config,
             init_method=self.config.init_method,
             gather_output=False,
@@ -72,7 +72,7 @@ class MLP(MegatronModule):
 
         self.linear_fc2 = build_module(
             submodules.linear_fc2,
-            self.config.ffn_hidden_size,
+            self.config.ffn_hidden_size * ffn_hidden_ratio,
             self.config.hidden_size,
             config=self.config,
             init_method=self.config.output_layer_init_method,
@@ -86,6 +86,7 @@ class MLP(MegatronModule):
 
         # [s, b, 4 * h/p]
         intermediate_parallel, bias_parallel = self.linear_fc1(hidden_states)
+        print('DIMENSION OF INTERMEDIATE FFN LAYER:', intermediate_parallel.shape)
 
         if self.config.bias_gelu_fusion:
             assert self.config.add_bias_linear is True
