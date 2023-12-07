@@ -95,9 +95,9 @@ def initialize_megatron(
         dir_path = os.path.join(args.router_profiling_path)
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
-        print('KEBABBBBBBBBBBBBBBBBBBBBBB:', args.kebab)
-        # No continuation function
-        return None
+    print('KEBABBBBBBBBBBBBBBBBBBBBBB:', args.kebab)
+    # No continuation function
+    return None
 
 
 def _compile_dependencies():
