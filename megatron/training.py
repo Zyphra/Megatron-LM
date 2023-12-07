@@ -557,7 +557,15 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
         'optimizer-count-zeros',
         'optimizer-inner-step',
         'optimizer-copy-main-to-model-params',
-        'optimizer']
+        'optimizer',
+        'final_route',
+        'ep_scatter',
+        'routing_loop',
+        'routing_gather',
+        'routing_block2',
+        'routing_block1',
+        'bias_scatter',
+        'expert_fwd']
 
     # Calculate batch size.
     batch_size = args.micro_batch_size * args.data_parallel_size * \

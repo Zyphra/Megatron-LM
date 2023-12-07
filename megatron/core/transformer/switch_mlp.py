@@ -19,10 +19,11 @@ from .mlp import MLP, MLPSubmodules
 
 def sinkhorn(cost, tol=0.0001):
     "Sinkhorn based MoE routing function"
-    cost = torch.exp(cost)
+    cost = torch.exp(2.0 * cost)
     d0 = torch.ones(cost.size(0), device=cost.device, dtype=cost.dtype)
-    d1 = torch.ones(cost.size(1), device=cost.device, dtype=cost.dtype)
-
+    # d1 = torch.ones(cost.size(1), device=cost.device, dtype=cost.dtype)
+    d1 = 1 / (cost.size(1) * torch.sum(cost, 0))
+    
     eps = 0.00000001
     error = 1e9
     d1_old = d1
@@ -98,7 +99,8 @@ class SwitchMLP(MegatronModule):
         route = self.router(hidden_states)
         route = route.view(-1, self.config.num_moe_experts)
 
-
+        if self.config.timers is not None:
+            self.config.timers('routing_block1', log_level=2).start()
         if self.routing == 'sinkhorn' or self.routing == 'sinkhorn_top2':
             if self.training:
                 with torch.no_grad():
@@ -130,14 +132,22 @@ class SwitchMLP(MegatronModule):
                 mask = torch.arange(route.shape[1], device=route.device).unsqueeze(0) == max_ind.unsqueeze(1)
                 masked_route[mask] = 0.0
                 max_prob_2, max_ind_2 = torch.max(masked_route, dim=1)
-
+        if self.config.timers is not None:
+            self.config.timers('routing_block1').stop()
           
-
+        if self.config.timers is not None:
+            self.config.timers('routing_block2', log_level=2).start()
         max_prob = torch.unsqueeze(max_prob, 1)
         if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
             max_prob_2 = torch.unsqueeze(max_prob_2, 1)
         hidden_states = hidden_states.view(-1, hidden_shape[-1])
+        if self.config.timers is not None:
+            self.config.timers('routing_block2').stop()
 
+
+
+        if self.config.timers is not None:
+            self.config.timers('routing_gather', log_level=2).start()
         if self.sequence_parallel or (self.expert_parallel_size > 1):
             global_hidden_states = tensor_parallel.gather_from_sequence_parallel_region_to_moe(
                 hidden_states
@@ -150,6 +160,10 @@ class SwitchMLP(MegatronModule):
             global_indices = max_ind
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 global_indices_2 = max_ind_2
+        if self.config.timers is not None:
+            self.config.timers('routing_gather').stop()
+
+
 
         # Evaluate balancing loss.
         if (args.use_balancing_loss is not None) and self.training:
@@ -181,11 +195,18 @@ class SwitchMLP(MegatronModule):
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
                 output_bias_total_2 = torch.zeros_like(global_hidden_states)
 
+
+        if self.config.timers is not None:
+            self.config.timers('routing_loop', log_level=2).start()
         for expert_num, expert in enumerate(self.local_experts):
             local_expert_index = self.local_expert_indices[expert_num]
             local_indices = (global_indices == local_expert_index).nonzero()
             hidden = global_hidden_states[local_indices, :]
+            if self.config.timers is not None:
+                self.config.timers('expert_fwd', log_level=2).start()
             output, output_bias = expert(hidden)
+            if self.config.timers is not None:
+                self.config.timers('expert_fwd').stop()
             output_total[local_indices, :] = output
             if self.add_bias:
                 output_bias = output_bias.expand_as(output)
@@ -199,8 +220,12 @@ class SwitchMLP(MegatronModule):
                 if self.add_bias:
                     output_bias = output_bias.expand_as(output)
                     output_bias_total_2[local_indices, :] = output_bias
+        if  self.config.timers is not None:
+            self.config.timers('routing_loop').stop()
 
 
+        if self.config.timers is not None:
+            self.config.timers('ep_scatter', log_level=2).start()
         if self.sequence_parallel or (self.expert_parallel_size > 1):
             output_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                 output_total
@@ -209,7 +234,8 @@ class SwitchMLP(MegatronModule):
                 output_total_2 = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                 output_total_2
             )
-                
+            if self.config.timers is not None:
+                self.config.timers('bias_scatter', log_level=2).start()
             if self.add_bias:
                 output_bias_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
                     output_bias_total
@@ -228,7 +254,14 @@ class SwitchMLP(MegatronModule):
                     output_bias_total_2 = (
                     output_bias_total_2 / parallel_state.get_tensor_model_parallel_world_size()
                 )
+            if self.config.timers is not None:
+                self.config.timers('bias_scatter').stop()
+        if self.config.timers is not None:
+            self.config.timers('ep_scatter').stop()
 
+
+        if self.config.timers is not None:
+            self.config.timers('final_route', log_level=2).start()
         output_total = output_total * max_prob
         if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
             output_total_2 = output_total_2 * max_prob_2
@@ -242,6 +275,7 @@ class SwitchMLP(MegatronModule):
             output_bias_total = output_bias_total.view(hidden_shape)
         else:
             output_bias_total = None
-            
+        if self.config.timers is not None:
+            self.config.timers('final_route').stop()
 
         return output_total, output_bias_total
