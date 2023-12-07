@@ -44,20 +44,23 @@ class MLP(MegatronModule):
         
         args = get_args()
         self.config: TransformerConfig = config
-        if layer and args.ffn_hidden_ratio:
-            ffn_ratio = args.ffn_hidden_ratio[layer-1]
-        else:
-            ffn_ratio = 1
 
+        if layer and args.ffn_hidden_ratio:
+            ffn_hidden_size_1 = self.config.hidden_size * args.ffn_hidden_ratio[layer-1]
+            ffn_hidden_size_2 = self.config.hidden_size * args.ffn_hidden_ratio[layer-1]
+        else:
+        ffn_hidden_size_1 = self.config.ffn_hidden_size
+        ffn_hidden_size_2 = self.config.ffn_hidden_size
+        
         # If this is a gated linear unit we double the output width, see https://arxiv.org/pdf/2002.05202.pdf
-        ffn_hidden_size = self.config.ffn_hidden_size
         if self.config.gated_linear_unit:
-            ffn_hidden_size *= 2
+            ffn_hidden_size_1 *= 2
+
 
         self.linear_fc1 = build_module(
             submodules.linear_fc1,
             self.config.hidden_size,
-            ffn_hidden_size * ffn_ratio,
+            ffn_hidden_size_1,
             config=self.config,
             init_method=self.config.init_method,
             gather_output=False,
@@ -78,7 +81,7 @@ class MLP(MegatronModule):
 
         self.linear_fc2 = build_module(
             submodules.linear_fc2,
-            self.config.ffn_hidden_size * ffn_ratio,
+            ffn_hidden_size_2,
             self.config.hidden_size,
             config=self.config,
             init_method=self.config.output_layer_init_method,
