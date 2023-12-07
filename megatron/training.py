@@ -7,6 +7,7 @@ from datetime import datetime
 import math
 import logging
 import sys
+import os
 from .log_handler import CustomHandler
 # Make default logging level INFO, but filter out all log messages not from MCore.
 logging.basicConfig(handlers=[CustomHandler()], level=logging.INFO)
@@ -455,16 +456,19 @@ def train_step(forward_step_func, data_iterator,
         unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
 
     # Update parameters.
-    if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Optimizer step")
+    if args.profile and args.curr_iteration >= args.profile_step_start and args.curr_iteration <= args.profile_step_start and torch.distributed.get_rank() in args.profile_ranks: torch.cuda.nvtx.range_push(f"Optimizer step")
     timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
     update_successful, grad_norm, num_zeros_in_grad = optimizer.step(args, timers)
     timers('optimizer').stop()
-    if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
+    if args.profile and args.curr_iteration >= args.profile_step_start and args.curr_iteration <= args.profile_step_start and torch.distributed.get_rank() in args.profile_ranks: torch.cuda.nvtx.range_pop()
     
-    if args.enable_manual_profiling and args.curr_iteration == 3 and torch.distributed.get_rank() == 0:
+    if args.profile and args.curr_iteration >= args.profile_step_start and args.curr_iteration <= args.profile_step_start and torch.distributed.get_rank() == 0:
         snapshot = torch.cuda.memory._snapshot()
         from pickle import dump
-        with open('snapshot.pickle', 'wb') as f:
+        snapshot_path = os.path.join(args.mem_snapshot_profiling_path)
+        if not os.path.exists(snapshot_path):
+            os.makedirs(snapshot_path)
+        with open(os.path.join(snapshot_path, 'mem_snapshot.pickle'), 'wb') as f:
             dump(snapshot, f)
 
     # Gather params.

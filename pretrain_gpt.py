@@ -173,17 +173,17 @@ def forward_step(data_iterator, model: GPTModel):
     timers = get_timers()
 
     # Get the batch.
-    if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Get batch")
+    if args.profile and args.curr_iteration >= args.profile_step_start and args.curr_iteration <= args.profile_step_start and torch.distributed.get_rank() in args.profile_ranks: torch.cuda.nvtx.range_push(f"Get batch")
     timers('batch-generator', log_level=2).start()
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
         data_iterator)
     timers('batch-generator').stop()
-    if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
+    if args.profile and args.curr_iteration >= args.profile_step_start and args.curr_iteration <= args.profile_step_start and torch.distributed.get_rank() in args.profile_ranks: torch.cuda.nvtx.range_pop()
 
-    if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Forward pass")
+    if args.profile and args.curr_iteration >= args.profile_step_start and args.curr_iteration <= args.profile_step_start and torch.distributed.get_rank() in args.profile_ranks: torch.cuda.nvtx.range_push(f"Forward pass")
     output_tensor = model(tokens, position_ids, attention_mask,
                           labels=labels)
-    if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
+    if args.profile and args.curr_iteration >= args.profile_step_start and args.curr_iteration <= args.profile_step_start and torch.distributed.get_rank() in args.profile_ranks: torch.cuda.nvtx.range_pop()
 
     return output_tensor, partial(loss_func, loss_mask)
 
@@ -228,7 +228,9 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
 if __name__ == "__main__":
 
-    if args.enable_manual_profiling:
+    args = get_args()
+
+    if args.profile:
         torch.cuda.memory._record_memory_history(
             # keep a maximum 100,000 alloc/free events from before the snapshot
             max_entries=100000)

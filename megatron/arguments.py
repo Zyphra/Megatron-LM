@@ -712,6 +712,8 @@ def _add_logging_args(parser):
                        help='Path to save the expert statistics.')
     group.add_argument('--router-profiling-interval', type=int, default=None,
                        help='Number of iterations after which it saves expert statistics.')
+    group.add_argument('--mem-snapshot-profiling-path', type=str, default=None,
+                       help='Path to save the PyTorch memory snapshot.')
     return parser
 
 
@@ -816,9 +818,9 @@ def _add_training_args(parser):
                        '--capture-range=cudaProfilerApi '
                        '--capture-range-end=stop`.')
     group.add_argument('--profile-step-start', type=int, default=10,
-                       help='Gloable step to start profiling.')
+                       help='Global step to start profiling.')
     group.add_argument('--profile-step-end', type=int, default=12,
-                       help='Gloable step to stop profiling.')
+                       help='Global step to stop profiling.')
     group.add_argument('--profile-ranks', nargs='+', type=int, default=[0],
                        help='Global ranks to profile.')
     group.add_argument('--tp-comm-overlap', action='store_true', help = 'Enables the '
@@ -1045,8 +1047,6 @@ def _add_checkpointing_args(parser):
                        help="If '--load' is set, but checkpoint is not found "
                        "(e.g., path typo), then exit instead of random "
                        "initialization.")
-    group.add_argument('--enable-manual-profiling', action='store_true',
-                       help="Profile through NVIDIA Nsight Systems.")
 
     return parser
 
