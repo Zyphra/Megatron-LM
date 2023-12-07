@@ -50,7 +50,7 @@ class SwitchMLP(MegatronModule):
 
         self.config: TransformerConfig = config
         if args.moe_layers:
-            self.num_moe_experts = args.moe_experts[layer-1]
+            self.num_moe_experts = args.moe_layers[layer-1]
         else:
             self.num_moe_experts = self.config.num_moe_experts
         self.router = torch.nn.Linear(self.config.hidden_size, self.num_moe_experts)
