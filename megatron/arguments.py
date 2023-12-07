@@ -390,8 +390,13 @@ def validate_args(args, defaults={}):
     # MoE Spec check
     if args.num_experts is not None:
         assert args.model_spec is None, "Model Spec must be None when using MoEs"
+        assert args.num_experts > 1, "--num-experts should be greater than 2."
     if args.use_balancing_loss is not None:
         assert (args.routing_mode == 'top1' or args.routing_mode == 'top2'), "Need --routing-mode = 'top1' or 'top2' if setting --use-balancing-loss."
+    if args.moe_layers is not None:
+        import math
+        assert sum(args.moe_layers) == args.num_layers, "--moe-layers doesn't sum up to --num-layers."
+        assert min(x for x in args.moe_layers if x != 1) > 2, "Experts per layer should be greater than 2."
 
     # Expert parallelism check
     if args.expert_model_parallel_size  > 1:
@@ -401,6 +406,8 @@ def validate_args(args, defaults={}):
         if args.tensor_model_parallel_size > 1:
             assert args.sequence_parallel, \
                 "When using expert parallelism and tensor parallelism, sequence parallelism must be used."
+    if args.moe_layers is not None:
+        assert all(x % args.expert_model_parallel_size == 0 for x in args.moe_layers if x != 1), "Experts per layer should be multiple of --expert-model-parallel-size."
 
     # Print arguments.
     _print_args("arguments", args)
@@ -628,8 +635,9 @@ def _add_network_size_args(parser):
                        dest='bert_binary_head')
     group.add_argument('--num-experts', type=int, default=None,
                        help='Number of Experts in Switch Transformer (None means no Switch)')
-    group.add_argument('--moe-layers', nargs='+', type=int,
-                       help='Number of experts for each layer (`1` means dense layer)')
+    group.add_argument('--moe-layers', nargs='+', type=int, default=None,
+                       help='Number of experts for each layer (`1` means dense layer). '
+                       'Does not support pipeline parallelism.')
     group.add_argument('--routing-mode', type=str, default='sinkhorn',
                        choices=['sinkhorn', 'top1', 'top2', 'sinkhorn_top2'],
                        help='Mode of the expert routing.')
