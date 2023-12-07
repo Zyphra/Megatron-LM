@@ -61,7 +61,7 @@ class TransformerBlock(MegatronModule):
         def build_layer(layer_number):
             args = get_args()
             if args.moe_layers:
-                if args.moe_layers[layer_numer-1] == 1:
+                if args.moe_layers[layer_number-1] == 1:
                     layer = TransformerLayer(
                         config=self.config,
                         submodules=gpt_layer_with_transformer_engine_spec.submodules,
