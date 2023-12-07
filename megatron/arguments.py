@@ -638,6 +638,9 @@ def _add_network_size_args(parser):
     group.add_argument('--moe-layers', nargs='+', type=int, default=None,
                        help='Number of experts for each layer (`1` means dense layer). '
                        'Does not support pipeline parallelism.')
+    group.add_argument('--ffn-hidden-ratio', nargs='+', type=int, default=None,
+                       help='Ratio of MLP intermediate layer over embedding dimension (4 is default). '
+                       'It can be different in each layer.')
     group.add_argument('--routing-mode', type=str, default='sinkhorn',
                        choices=['sinkhorn', 'top1', 'top2', 'sinkhorn_top2'],
                        help='Mode of the expert routing.')
