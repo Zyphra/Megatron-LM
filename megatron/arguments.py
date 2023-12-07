@@ -628,7 +628,7 @@ def _add_network_size_args(parser):
                        dest='bert_binary_head')
     group.add_argument('--num-experts', type=int, default=None,
                        help='Number of Experts in Switch Transformer (None means no Switch)')
-    group.add_argument('--kebab', nargs='+', type=int,
+    group.add_argument('--moe-layers', nargs='+', type=int,
                        help='Number of experts for each layer (`1` means dense layer)')
     group.add_argument('--routing-mode', type=str, default='sinkhorn',
                        choices=['sinkhorn', 'top1', 'top2', 'sinkhorn_top2'],
