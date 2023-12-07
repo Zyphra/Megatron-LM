@@ -75,7 +75,7 @@ class SwitchMLP(MegatronModule):
 
         self.local_experts = torch.nn.ModuleList()
         for _ in range(self.num_local_experts):
-            expert = MLP(self.config, submodules, is_expert=True, ffn_hidden_ratio = args.ffn_hidden_ratios[layer-1])
+            expert = MLP(self.config, submodules, is_expert=True, layer=layer)
             self.local_experts.append(expert)
 
     def gather_indices(self, local_indices):
