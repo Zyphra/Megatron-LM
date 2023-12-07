@@ -91,11 +91,13 @@ A sample plot for `top2` routing mode (obtained from a tiny toy model) is:
 
 <img src="images/token_count.png" alt="Token Counts" width="70%">
 
-## Varying expert number across layers
+## Varying expert number and MLP hidden dimension across layers
 
-To set different number of experts across layers use the flag `--moe-layers` followed by a sequence of numbers corresponding to the number of experts per layer. For example, in a model with 5 layers, one can write `--moe-layers 1 8 16 8 1`.
+To set different number of experts across layers use the flag `--moe-layers` followed by a sequence of integers corresponding to the number of experts per layer. For example, in a model with 5 layers, one can write `--moe-layers 1 8 16 8 1`.
 
 This flag does not currently support pipeline parallelism. Also, for MoE layers, each of these numbers should be multiple of `--expert-model-parallel-size` and greater than 2. For a dense layer, the number should be set to 1.
+
+To change the hidden dimension of MLP's across layers, use the flag `--ffn-hidden-ratio` followed by a sequence of integers corresponding to the ratio between the hidden dimension and the model's embedding dimension. Without this flag, this value is set by default to 4 for all layers (unless `--ff-hidden-size` is used). For example, for a model with 5 layers, one can write `--ffn-hidden-ratio 4 4 2 4 4`.
 
 # NVIDIA Megatron-LM (copied from upstream)
 
