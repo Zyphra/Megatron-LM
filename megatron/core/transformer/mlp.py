@@ -11,6 +11,7 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
+from megatron import get_args
 
 
 @dataclass
@@ -40,10 +41,13 @@ class MLP(MegatronModule):
         self, config: TransformerConfig, submodules: MLPSubmodules, is_expert: bool = False, layer=None
     ):
         super().__init__(config=config)
-
+        
+        args = get_args()
         self.config: TransformerConfig = config
-        if layer:
-            ffn_ratio = ffn_hidden_ratio[layer-1]
+        if layer and args.ffn_hidden_ratio:
+            ffn_ratio = args.ffn_hidden_ratio[layer-1]
+        else:
+            ffn_ratio = 1
 
         # If this is a gated linear unit we double the output width, see https://arxiv.org/pdf/2002.05202.pdf
         ffn_hidden_size = self.config.ffn_hidden_size
