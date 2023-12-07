@@ -95,7 +95,8 @@ class MLP(MegatronModule):
 
         # [s, b, 4 * h/p]
         intermediate_parallel, bias_parallel = self.linear_fc1(hidden_states)
-        print('DIMENSION OF INTERMEDIATE FFN LAYER:', intermediate_parallel.shape)
+        if torch.distribute.get_rank() == 0:
+            print('DIMENSION OF INTERMEDIATE FFN LAYER:', intermediate_parallel.shape)
 
         if self.config.bias_gelu_fusion:
             assert self.config.add_bias_linear is True
