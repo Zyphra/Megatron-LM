@@ -58,22 +58,31 @@ class TransformerBlock(MegatronModule):
         #     coeff = self.layer_number
         #     self.norm_factor *= coeff
         def build_layer(layer_number):
-            if layer_number in [1, 2, 4]:
-                layer = TransformerLayer(
-                    config=self.config,
-                    submodules=gpt_layer_with_transformer_engine_spec.submodules,
-                    layer_number=layer_number,
-                    self_attn_mask_type=self.self_attn_mask_type,
-                )
-                if torch.distributed.get_rank() == 0:
-                    print('LAYER:', layer_number, 'NO EXPERTS')
+            args = get_args()
+            if args.moe_layers:
+                if args.moe_layers[layer_numer-1] == 1:
+                    layer = TransformerLayer(
+                        config=self.config,
+                        submodules=gpt_layer_with_transformer_engine_spec.submodules,
+                        layer_number=layer_number,
+                        self_attn_mask_type=self.self_attn_mask_type,
+                    )
+                    if torch.distributed.get_rank() == 0:
+                        print('LAYER:', layer_number, 'NO EXPERTS')
+                else:
+                    layer = TransformerLayer(
+                        config=self.config,
+                        submodules=transformer_layer_spec.submodules,
+                        layer_number=layer_number,
+                        self_attn_mask_type=self.self_attn_mask_type,
+                    )
             else:
                 layer = TransformerLayer(
-                    config=self.config,
-                    submodules=transformer_layer_spec.submodules,
-                    layer_number=layer_number,
-                    self_attn_mask_type=self.self_attn_mask_type,
-                )
+                        config=self.config,
+                        submodules=transformer_layer_spec.submodules,
+                        layer_number=layer_number,
+                        self_attn_mask_type=self.self_attn_mask_type,
+                    )
             return layer
 
         if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
