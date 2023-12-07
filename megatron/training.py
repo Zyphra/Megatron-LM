@@ -455,11 +455,11 @@ def train_step(forward_step_func, data_iterator,
         unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
 
     # Update parameters.
-    #if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Optimizer step")
+    if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Optimizer step")
     timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
     update_successful, grad_norm, num_zeros_in_grad = optimizer.step(args, timers)
     timers('optimizer').stop()
-    #if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
+    if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
 
     # Gather params.
     if update_successful:
