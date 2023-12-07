@@ -96,8 +96,8 @@ def initialize_megatron(
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
     print('KEBABBBBBBBBBBBBBBBBBBBBBB:', args.kebab)
-        # No continuation function
-        return None
+    # No continuation function
+    return None
 
 
 def _compile_dependencies():
