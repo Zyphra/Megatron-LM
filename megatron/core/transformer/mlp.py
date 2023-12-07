@@ -49,8 +49,8 @@ class MLP(MegatronModule):
             ffn_hidden_size_1 = self.config.hidden_size * args.ffn_hidden_ratio[layer-1]
             ffn_hidden_size_2 = self.config.hidden_size * args.ffn_hidden_ratio[layer-1]
         else:
-        ffn_hidden_size_1 = self.config.ffn_hidden_size
-        ffn_hidden_size_2 = self.config.ffn_hidden_size
+            ffn_hidden_size_1 = self.config.ffn_hidden_size
+            ffn_hidden_size_2 = self.config.ffn_hidden_size
         
         # If this is a gated linear unit we double the output width, see https://arxiv.org/pdf/2002.05202.pdf
         if self.config.gated_linear_unit:
