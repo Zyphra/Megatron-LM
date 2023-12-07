@@ -256,15 +256,14 @@ def validate_args(args, defaults={}):
 
     # Checks.
     if args.ffn_hidden_size is None:
-        if args.swiglu:
-            # reduce the dimnesion for MLP since projections happens on
-            # two linear layers. this keeps the number of paramters in
-            # the same ballpark as the counterpart with 4*h size
-            # we keep it a multiple of 64, which means the actual tensor size
-            # will be a multiple of 64 / tp_size
-            args.ffn_hidden_size = int((4 * args.hidden_size * 2 / 3) / 64) * 64
-        else:
-            args.ffn_hidden_size = 4 * args.hidden_size
+        args.ffn_hidden_size = 4 * args.hidden_size    
+    if args.swiglu:
+        # reduce the dimnesion for MLP since projections happens on
+        # two linear layers. this keeps the number of paramters in
+        # the same ballpark as the counterpart with 4*h size
+        # we keep it a multiple of 64, which means the actual tensor size
+        # will be a multiple of 64 / tp_size
+        args.ffn_hidden_size = int((4 * args.hidden_size * 2 / 3) / 64) * 64
 
     if args.kv_channels is None:
         assert args.hidden_size % args.num_attention_heads == 0
@@ -391,6 +390,8 @@ def validate_args(args, defaults={}):
     # MoE Spec check
     if args.num_experts is not None:
         assert args.model_spec is None, "Model Spec must be None when using MoEs"
+    if args.use_balancing_loss is not None:
+        assert (args.routing_mode == 'top1' or args.routing_mode == 'top2'), "Need --routing-mode = 'top1' or 'top2' if setting --use-balancing-loss."
 
     # Expert parallelism check
     if args.expert_model_parallel_size  > 1:
@@ -628,8 +629,11 @@ def _add_network_size_args(parser):
     group.add_argument('--num-experts', type=int, default=None,
                        help='Number of Experts in Switch Transformer (None means no Switch)')
     group.add_argument('--routing-mode', type=str, default='sinkhorn',
-                       choices=['sinkhorn', 'top1', 'top2'],
+                       choices=['sinkhorn', 'top1', 'top2', 'sinkhorn_top2'],
                        help='Mode of the expert routing.')
+    group.add_argument('--use-balancing-loss', type=float, default=None,
+                       help='Use balancing loss for top1 and top2 MoE.'
+                       'The value set is the stiffness of the balancing loss.')
     group.add_argument('--untie-embeddings-and-output-weights', action='store_true',
                        help='Untie embeddings and output weights.'),
     return parser
@@ -704,7 +708,7 @@ def _add_logging_args(parser):
                        help='Path to save the wandb results locally.')
     group.add_argument('--wandb-log-interval', type=int, default=1,
                        help='Report to wandb interval.')
-    group.add_argument('--router-profiling-path', type=str, default='',
+    group.add_argument('--router-profiling-path', type=str, default=None,
                        help='Path to save the expert statistics.')
     group.add_argument('--router-profiling-interval', type=int, default=None,
                        help='Number of iterations after which it saves expert statistics.')
@@ -1162,6 +1166,13 @@ def _add_validation_args(parser):
     group.add_argument('--skip-train', action='store_true',
                        default=False, help='If set, bypass the training loop, '
                        'optionally do evaluation for validation/test, and exit.')
+
+    group.add_argument('--eval-harness-interval', type=int, default=1000,
+                       help='Interval between running evaluation on '
+                       'validation set.')
+    group.add_argument('--eval-harness-tasks', type=str, default="openbookqa",
+                       help="Pass in a comma separated task list.")
+
 
     return parser
 

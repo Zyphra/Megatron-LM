@@ -11,14 +11,14 @@ name2ip[GPU627A]=172.18.135.17
 name2ip[GPU6282]=172.18.135.18
 
 declare -A rank
-#rank[GPU6268]=1
-#rank[GPU6292]=2
-#rank[GPU626E]=3
-#rank[GPU6284]=4
+#rank[GPU6268]=0
+#rank[GPU6292]=1
+#rank[GPU626E]=0
+#rank[GPU6284]=1
 #rank[GPUC194]=5
-rank[GPU6278]=1
-rank[GPU627A]=0
-#rank[GPU6282]=7
+#rank[GPU6278]=1
+#rank[GPU627A]=0
+rank[GPU6282]=0
 
 current_node=$(hostname)
 current_rank=${rank[$current_node]}
@@ -49,19 +49,19 @@ GPUS_PER_NODE=8
 export MASTER_ADDR=${name2ip[$master_node]}
 #export MASTER_ADDR=localhost
 export MASTER_PORT=6000
-NNODES=2
+NNODES=1
 NODE_RANK=$current_rank
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
-CHECKPOINT_PATH=/checkpoints/equiparam/32e
+CHECKPOINT_PATH=/checkpoints/equiparam/half_mlp_16e
 VOCAB_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/vocab.json
 MERGE_FILE=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/merges.txt
 DATA_PATH=/datasets/SlimPajama-627B_megatron/gpt-neox-20b-tokenizer/train_text_document
-EXPERT_STATS_PATH=/checkpoints/equiparameter/32e
+EXPERT_STATS_PATH=/checkpoints/equiparameter/half_mlp_16e
 
 WANDB_PROJECT=moe_equiparam
-WANDB_EXP_NAME=32e
-WANDB_SAVE_DIR=/checkpoints/equiparam/wandb_32e
+WANDB_EXP_NAME=half_mlp_16e
+WANDB_SAVE_DIR=/checkpoints/equiparam/wandb_half_mlp_16e
 
 TOKENIZER_TYPE=HFAutoTokenizer
 TOKENIZER_MODEL="EleutherAI/gpt-neox-20b"
@@ -75,12 +75,13 @@ DISTRIBUTED_ARGS="
 "
 
 GPT_ARGS="
-    --num-layers 10 \
-    --hidden-size 704 \
+    --num-layers 14 \
+    --hidden-size 1152 \
+    --ffn-hidden-size 2304 \
     --num-attention-heads 16 \
     --seq-length 2048 \
     --max-position-embeddings 2048 \
-    --micro-batch-size 30 \
+    --micro-batch-size 10 \
     --global-batch-size 480 \
     --lr 0.00055 \
     --override-opt_param-scheduler \
@@ -92,7 +93,7 @@ GPT_ARGS="
     --lr-warmup-fraction .01 \
     --clip-grad 1.0 \
     --bf16 \
-    --num-experts 32 \
+    --num-experts 16 \
     --expert-model-parallel-size 8 \
     --recompute-granularity selective \
     --use-flash-attn \
@@ -131,7 +132,6 @@ OUTPUT_ARGS="
 "
 
 #pip list
-
 
 torchrun $DISTRIBUTED_ARGS /opt/Megatron-LM/pretrain_gpt.py \
     $GPT_ARGS \
