@@ -397,6 +397,7 @@ def validate_args(args, defaults={}):
         import math
         assert sum(args.moe_layers) == args.num_layers, "--moe-layers doesn't sum up to --num-layers."
         assert min(x for x in args.moe_layers if x != 1) > 2, "Experts per layer should be greater than 2."
+        assert args.use_mcore_models == True, "--moe-layers supported only with --use-mcore-models."
 
     # Expert parallelism check
     if args.expert_model_parallel_size  > 1:
