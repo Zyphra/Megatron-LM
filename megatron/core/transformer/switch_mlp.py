@@ -206,7 +206,7 @@ class SwitchMLP(MegatronModule):
             local_expert_index = self.local_expert_indices[expert_num]
             local_indices = (global_indices == local_expert_index).nonzero()
             hidden = global_hidden_states[local_indices, :]
-            if torch.distributed.get_rank():
+            if torch.distributed.get_rank() == 0:
                 print('LAYER:', self.layer, 'local_expert_index', local_expert_index)
             if self.config.timers is not None:
                 self.config.timers('expert_fwd', log_level=2).start()
