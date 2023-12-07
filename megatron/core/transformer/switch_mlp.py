@@ -65,8 +65,6 @@ class SwitchMLP(MegatronModule):
 
         assert self.num_moe_experts % self.expert_parallel_size == 0
         self.num_local_experts = self.num_moe_experts // self.expert_parallel_size
-        if torch.distributed.get_rank() == 0:
-            print('LAYER:', layer, 'NUM LOCAL EXPERTS:', self.num_local_experts)
         local_expert_indices_offset = (
             parallel_state.get_expert_model_parallel_rank() * self.num_local_experts
         )
@@ -206,8 +204,6 @@ class SwitchMLP(MegatronModule):
             local_expert_index = self.local_expert_indices[expert_num]
             local_indices = (global_indices == local_expert_index).nonzero()
             hidden = global_hidden_states[local_indices, :]
-            if torch.distributed.get_rank() == 0:
-                print('LAYER:', self.layer, 'local_expert_index', local_expert_index)
             if self.config.timers is not None:
                 self.config.timers('expert_fwd', log_level=2).start()
             output, output_bias = expert(hidden)
