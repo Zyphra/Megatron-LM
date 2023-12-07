@@ -394,8 +394,7 @@ def validate_args(args, defaults={}):
     if args.use_balancing_loss is not None:
         assert (args.routing_mode == 'top1' or args.routing_mode == 'top2'), "Need --routing-mode = 'top1' or 'top2' if setting --use-balancing-loss."
     if args.moe_layers is not None:
-        import math
-        assert sum(args.moe_layers) == args.num_layers, "--moe-layers doesn't sum up to --num-layers."
+        assert len(args.moe_layers) == args.num_layers, "length of --moe-layers should equal --num-layers."
         assert min(x for x in args.moe_layers if x != 1) > 2, "Experts per layer should be greater than 2."
         assert args.use_mcore_models == True, "--moe-layers supported only with --use-mcore-models."
 
