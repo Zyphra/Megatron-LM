@@ -144,7 +144,7 @@ class SwitchMLP(MegatronModule):
         max_prob = torch.unsqueeze(max_prob, 1)
         if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
             max_prob_2 = torch.unsqueeze(max_prob_2, 1)
-        hidden_states = hidden_states.view(-1, hidden_shape[-1])
+        hidden_states = hidden_states.view(-1, hidden_shape[-1]//2)
         if self.config.timers is not None:
             self.config.timers('routing_block2').stop()
 
