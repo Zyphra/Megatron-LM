@@ -98,7 +98,7 @@ class SwitchMLP(MegatronModule):
     def forward(self, hidden_states_0):
         args = get_args()
         hidden_shape = hidden_states_0.shape
-        higgen_states_1 = self.splitter(hidden_states_0)
+        hidden_states_1 = self.splitter(hidden_states_0)
         hidden_states = hidden_states_1.view(hidden_shape[0], hidden_shape[1], 2, hidden_shape[2]//2)
         route = self.router(hidden_states)
         route = route.view(-1, self.config.num_moe_experts)
