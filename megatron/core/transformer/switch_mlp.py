@@ -287,7 +287,6 @@ class SwitchMLP(MegatronModule):
             
         output_total = self.merger(output_total)
         if self.add_bias:
-           print('OUTPUT BIAS TOTAL')
            output_bias_total = self.merger(output_bias_total) 
 
         return output_total, output_bias_total
