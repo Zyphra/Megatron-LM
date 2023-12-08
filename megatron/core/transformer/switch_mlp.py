@@ -51,7 +51,9 @@ class SwitchMLP(MegatronModule):
 
         self.config: TransformerConfig = config
 
-        self.router = torch.nn.Linear(self.config.hidden_size, self.config.num_moe_experts)
+        self.router = torch.nn.Linear(self.config.hidden_size//2, self.config.num_moe_experts)
+        self.splitter = torch.nn.Linear(self.config.hidden_size, self.config.hidden_size)
+        self.merger = torch.nn.Linear(self.config.hidden_size, self.config.hidden_size)
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2', 'sinkhorn_top2'
         self.layer = layer
@@ -93,9 +95,11 @@ class SwitchMLP(MegatronModule):
         torch.distributed._all_gather_base(output, local_indices.contiguous(), group=group)
         return output
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states_0):
         args = get_args()
-        hidden_shape = hidden_states.shape
+        hidden_shape = hidden_states_0.shape
+        higgen_states_1 = self.splitter(hidden_states_0)
+        hidden_states = hidden_states_1.view(hidden_shape[0], hidden_shape[1], 2, hidden_shape[2]//2)
         route = self.router(hidden_states)
         route = route.view(-1, self.config.num_moe_experts)
 
@@ -224,6 +228,8 @@ class SwitchMLP(MegatronModule):
             self.config.timers('routing_loop').stop()
 
 
+
+
         if self.config.timers is not None:
             self.config.timers('ep_scatter', log_level=2).start()
         if self.sequence_parallel or (self.expert_parallel_size > 1):
@@ -260,6 +266,7 @@ class SwitchMLP(MegatronModule):
             self.config.timers('ep_scatter').stop()
 
 
+
         if self.config.timers is not None:
             self.config.timers('final_route', log_level=2).start()
         output_total = output_total * max_prob
@@ -277,5 +284,8 @@ class SwitchMLP(MegatronModule):
             output_bias_total = None
         if self.config.timers is not None:
             self.config.timers('final_route').stop()
+            
+        output_total = self.merger(output_total)
+        output_bias_total = self.merger(output_bias_total) 
 
         return output_total, output_bias_total
