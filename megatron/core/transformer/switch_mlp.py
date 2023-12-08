@@ -286,6 +286,7 @@ class SwitchMLP(MegatronModule):
             self.config.timers('final_route').stop()
             
         output_total = self.merger(output_total)
-        output_bias_total = self.merger(output_bias_total) 
+        if self.add_bias:
+            output_bias_total = self.merger(output_bias_total) 
 
         return output_total, output_bias_total
