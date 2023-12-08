@@ -98,8 +98,8 @@ class SwitchMLP(MegatronModule):
     def forward(self, hidden_states_0):
         args = get_args()
         hidden_shape = hidden_states_0.shape
-        hidden_states_1 = self.splitter(hidden_states_0)
-        hidden_states = hidden_states_1.view(hidden_shape[0], hidden_shape[1], 2, hidden_shape[2]//2)
+        # hidden_states_1 = self.splitter(hidden_states_0)
+        hidden_states = hidden_states_0.view(hidden_shape[0], hidden_shape[1], 2, hidden_shape[2]//2)
         route = self.router(hidden_states)
         route = route.view(-1, self.config.num_moe_experts)
 
@@ -285,8 +285,8 @@ class SwitchMLP(MegatronModule):
         if self.config.timers is not None:
             self.config.timers('final_route').stop()
             
-        output_total = self.merger(output_total)
-        if self.add_bias:
-            output_bias_total = self.merger(output_bias_total) 
+        # output_total = self.merger(output_total)
+        # if self.add_bias:
+        #    output_bias_total = self.merger(output_bias_total) 
 
         return output_total, output_bias_total
