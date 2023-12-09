@@ -66,6 +66,10 @@ The schedule looks like this:
 
 <img src="images/lr_sched.png" alt="Infinite LR schedule" width="50%">
 
+## Time and Memory Profiling
+
+We introduced calls of `torch.cuda.nvtx` and `torch.cuda.memory` for time and memory profiling, which are both activated by adding the flag `--enable-manual-profiling`. See [this link](https://github.com/NERSC/sc22-dl-tutorial/blob/21ea7dc9419a474cfa40c9790adb935554c4c590/README.md) and [this link](https://zdevito.github.io/2022/12/09/memory-traces.html) for more details. Time profiling can also be activated using `--timing-log-level <int>`. 
+
 ## Expert Routing 
 
 To choose the routing algorithm, in ```Megatron-LM/examples/pretrain_gpt_distributed.sh``` include the flag `--routing-mode` in `GPT_ARGS` with options `sinkhorn`, `sinkhorn_top2`, `top1`, or `top2`. See [Fedus et al. 2022](https://arxiv.org/abs/2209.01667) for an overview and references on expert routing algorithms. The default expert routing algorithm is `sinkhorn`. Our implementation of `sinkhorn` is a slight improvement of ([Clark et al., ICML 2022](https://proceedings.mlr.press/v162/clark22a.html)): the routing function undergoing the sinkhorn algorithm is initialized to the softmax of the router logits normalized along the sequence direction, rather than the unnormalized exponential of the logits (see `Megatron-LM/core/transformer/switch_mlp.py` for details). This leads to a faster convergence of the sinkhorn algorithm.
