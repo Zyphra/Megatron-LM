@@ -276,22 +276,10 @@ class SwitchMLP(MegatronModule):
         #if self.config.timers is not None:
         #    self.config.timers('final_route').stop()
 
-        if self.config.timers is not None:
-            self.config.timers('final_route', log_level=2).start()
+        
         output_total = output_total * max_prob
-        if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
-            output_total_2 = output_total_2 * max_prob_2
-            output_total = output_total + output_total_2
         output_total = output_total.view(hidden_shape)
-        if self.add_bias:
-            output_bias_total = output_bias_total * max_prob
-            if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
-                output_bias_total_2 = output_bias_total_2 * max_prob_2
-                output_bias_total = output_bias_total + output_bias_total_2
-            output_bias_total = output_bias_total.view(hidden_shape)
-        else:
-            output_bias_total = None
-        if self.config.timers is not None:
-            self.config.timers('final_route').stop()
+        output_bias_total = None
+
             
         return output_total, output_bias_total
