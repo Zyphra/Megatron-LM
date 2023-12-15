@@ -167,7 +167,10 @@ class SwitchMLP(MegatronModule):
             self.config.timers('routing_gather').stop()
 
 
-
+        # Evaluate router loss
+        if hasattr(args, 'l_router') and self.training:
+            args.l_router -= torch.sum(route * torch.log(route + 1e-9))
+        
         # Evaluate balancing loss.
         if (args.use_balancing_loss is not None) and self.training:
             if hasattr(args, 'l_aux'):
@@ -264,9 +267,9 @@ class SwitchMLP(MegatronModule):
 
         if self.config.timers is not None:
             self.config.timers('final_route', log_level=2).start()
-        output_total = output_total * max_prob
+        # output_total = output_total * max_prob
         if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
-            output_total = (output_total + output_total_2 * max_prob_2)
+            output_total = (output_total * max_prob + output_total_2 * max_prob_2)
         output_total = output_total.view(hidden_shape)
         if self.add_bias:
             output_bias_total = output_bias_total * max_prob
@@ -277,11 +280,5 @@ class SwitchMLP(MegatronModule):
             output_bias_total = None
         if self.config.timers is not None:
             self.config.timers('final_route').stop()
-
-        
-        output_total = output_total * max_prob
-        output_total = output_total.view(hidden_shape)
-        output_bias_total = None
-
             
         return output_total, output_bias_total
