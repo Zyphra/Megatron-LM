@@ -168,6 +168,7 @@ class GPTModel(LanguageModule):
             output_weight = self.shared_embedding_or_output_weight()
         logits, _ = self.output_layer(hidden_states, weight=output_weight)
 
+        print('SHAPES BEFORE LOSS COMPUTE:', logits.shape, labels.shape)
         if labels is None:
             # [s b h] => [b s h]
             return logits.transpose(0, 1).contiguous()
