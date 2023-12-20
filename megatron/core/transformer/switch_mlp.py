@@ -264,7 +264,7 @@ class SwitchMLP(MegatronModule):
         if self.config.timers is not None:
             self.config.timers('ep_scatter').stop()
 
-        print('THIS IS WHERE I'M PRINTING')
+        print('THIS IS WHERE IM PRINTING')
         if self.config.timers is not None:
             self.config.timers('final_route', log_level=2).start()
         output_total = output_total * max_prob
