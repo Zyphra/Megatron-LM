@@ -129,7 +129,9 @@ class GPTModel(LanguageModule):
         if decoder_input is not None:
             pass
         elif self.pre_process:
+            print('DATA SHAPE BEFORE EMBEDDING:', input_ids.shape, labels.shape)
             decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
+            print('DATA SHAPE AFTER EMBEDDING:', input_ids.shape, labels.shape)
         else:
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor
