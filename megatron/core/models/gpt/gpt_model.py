@@ -151,6 +151,7 @@ class GPTModel(LanguageModule):
             if args.use_balancing_loss is not None:
                 args.l_aux = 0.0
             args.l_router = 0.0
+        print('SHAPE OF DATA BEFORE DECODER IN GPT_MODEL.PY:' decoder_input.shape)
         hidden_states = self.decoder(
             hidden_states=decoder_input,
             attention_mask=attention_mask,
