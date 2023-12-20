@@ -459,7 +459,7 @@ def train_step(forward_step_func, data_iterator,
     # Update parameters.
 
     # print("JUST BEFORE STEP:" )
-    if args.curr_iteration % 10 == 0 and torch.distributed.get_rank() == 0:
+    if args.curr_iteration % 10 == 0 and torch.distributed.get_rank() == 0 and 1 == 0:
         for i,(n, p) in enumerate(model[0].named_parameters()):
             if len(prev_params[i]) == 0:
                 prev_params[i] = p.detach().clone()
