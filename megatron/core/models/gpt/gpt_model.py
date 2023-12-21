@@ -133,8 +133,6 @@ class GPTModel(LanguageModule):
             pass
         elif self.pre_process:
             decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
-            if torch.distributed.get_rank() == 0:
-                print(self.embedding.word_embeddings.weight.data, self.output_layer.weight.data)
         else:
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor
