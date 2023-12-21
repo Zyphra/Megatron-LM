@@ -105,10 +105,7 @@ class GPTModel(LanguageModule):
             )
 
         if self.share_embeddings_and_output_weights and (self.pre_process or self.post_process):
-            print('THIS CONDITION TRUE')
             self.initialize_last_stage_with_word_embeddings()
-        else:
-            print('THIS CONDITION FALSE')
 
     def forward(
         self,
@@ -169,7 +166,6 @@ class GPTModel(LanguageModule):
             output_weight = self.shared_embedding_or_output_weight()
         logits, _ = self.output_layer(hidden_states, weight=output_weight)
 
-        print('SHAPES BEFORE LOSS COMPUTE:', logits.shape, labels.shape)
         if labels is None:
             # [s b h] => [b s h]
             return logits.transpose(0, 1).contiguous()
