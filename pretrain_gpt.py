@@ -178,7 +178,6 @@ def forward_step(data_iterator, model: GPTModel):
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
         data_iterator)
     timers('batch-generator').stop()
-    print('SHAPE OF DATA AFTER GET_BATCH:', tokens.shape, labels.shape)
     if args.enable_manual_profiling: torch.cuda.nvtx.range_pop()
 
     if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Forward pass")
