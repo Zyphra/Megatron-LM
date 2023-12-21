@@ -105,7 +105,10 @@ class GPTModel(LanguageModule):
             )
 
         if self.share_embeddings_and_output_weights and (self.pre_process or self.post_process):
+            print('THIS CONDITION TRUE')
             self.initialize_last_stage_with_word_embeddings()
+        else:
+            print('THIS CONDITION FALSE')
 
     def forward(
         self,
