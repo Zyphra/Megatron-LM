@@ -132,9 +132,9 @@ class GPTModel(LanguageModule):
         if decoder_input is not None:
             pass
         elif self.pre_process:
-            print('DATA SHAPE BEFORE EMBEDDING:', input_ids.shape, labels.shape)
             decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
-            print('DATA SHAPE AFTER EMBEDDING:', decoder_input.shape, labels.shape)
+            if torch.distributed.get_rank() == 0:
+                print(self.embedding.word_embeddings.weight.data, self.output_layer.weight.data)
         else:
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor
@@ -154,7 +154,7 @@ class GPTModel(LanguageModule):
             if args.use_balancing_loss is not None:
                 args.l_aux = 0.0
             args.l_router = 0.0
-        print('SHAPE OF DATA BEFORE DECODER IN GPTMODELPY:', decoder_input.shape)
+        
         hidden_states = self.decoder(
             hidden_states=decoder_input,
             attention_mask=attention_mask,
