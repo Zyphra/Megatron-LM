@@ -175,11 +175,9 @@ class TransformerLayer(MegatronModule):
         # TODO: could we move `bias_dropout_add_exec_handler` itself
         # inside the module provided in the `bias_dropout_add_spec` module?
         with self.bias_dropout_add_exec_handler():
-            print('SHAPE OF DATA BEFORE ATTENTION:', hidden_states.shape)
             hidden_states = self.self_attn_bda(self.training, self.config.bias_dropout_fusion)(
                 attention_output_with_bias, residual, self.config.hidden_dropout
             )
-            print('SHAPE OF DATA AFTER ATTENTION:', hidden_states.shape)
 
         # Residual connection.
         residual = hidden_states
