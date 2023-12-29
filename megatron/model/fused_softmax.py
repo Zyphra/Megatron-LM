@@ -145,10 +145,8 @@ class FusedScaleMaskSoftmax(nn.Module):
         assert input.dim() == 4
 
         if self.is_kernel_available(mask, *input.size()):
-            print('TEST_fused')
             return self.forward_fused_softmax(input, mask)
         else:
-            print('TEST1_notfused')
             return self.forward_torch_softmax(input, mask)
 
     def is_kernel_available(self, mask, b, np, sq, sk):
