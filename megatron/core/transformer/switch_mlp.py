@@ -168,8 +168,8 @@ class SwitchMLP(MegatronModule):
 
 
         # Evaluate router loss
-        if hasattr(args, 'l_router') and self.training:
-            args.l_router -= torch.sum(route * torch.log(route + 1e-9))
+        # if hasattr(args, 'l_router') and self.training:
+        #     args.l_router -= torch.sum(route * torch.log(route + 1e-9))
         
         # Evaluate balancing loss.
         if (args.use_balancing_loss is not None) and self.training:
