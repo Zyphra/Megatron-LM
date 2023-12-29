@@ -1,3 +1,5 @@
+Branch from pyramid_moe. Added `args.l_router` in `megatron/core/transformer/switch_mlp.py` and `megatron/core/models/gpt/gpt_model.py` which provides an alternative way to optimize router. Standard way to optimize router is to multiply MoE layer output by `p_max` (see `switch_mlp.py`), which couples router to computation graph. Instead, here we drop `p_max` and attempt an alternative way to optimize router through an additional loss term.
+
 # Zyphra Megatron-LM
 
 Guide for running multi-node training using our Docker image: https://zyphra.atlassian.net/l/cp/NbwsaejA
