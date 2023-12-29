@@ -148,7 +148,6 @@ class GPTModel(LanguageModule):
             args = get_args()
             if args.use_balancing_loss is not None:
                 args.l_aux = 0.0
-            args.l_router = 0.0
         
         hidden_states = self.decoder(
             hidden_states=decoder_input,
@@ -173,8 +172,7 @@ class GPTModel(LanguageModule):
         loss = self.compute_language_model_loss(labels, logits)
         if args.use_balancing_loss is not None:
            loss += args.use_balancing_loss * args.l_aux
-        loss += args.l_router
-
+            
         return loss
 
     def shared_embedding_or_output_weight(self) -> Tensor:
