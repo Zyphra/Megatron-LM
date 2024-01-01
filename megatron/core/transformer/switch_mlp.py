@@ -99,7 +99,7 @@ class SwitchMLP(MegatronModule):
     def forward(self, hidden_states):
         args = get_args()
         hidden_shape = hidden_states.shape
-        route = self.router(hidden_states.detach())
+        route = self.router(hidden_states)
         route = route.view(-1, self.num_moe_experts)
 
         if self.config.timers is not None:
