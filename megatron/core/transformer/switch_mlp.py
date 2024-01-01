@@ -106,7 +106,7 @@ class SwitchMLP(MegatronModule):
             self.config.timers('routing_block1', log_level=2).start()
         if self.routing == 'sinkhorn' or self.routing == 'sinkhorn_top2':
             route = torch.softmax(route, dim=1)
-            route = route / torch.sum(route, dim=0, keepdim=True)
+            route = (1/self.num_moe_experts) * (route / torch.sum(route, dim=0, keepdim=True))
             max_prob, max_ind = torch.max(route, dim=1)
             if self.routing == 'sinkhorn_top2':
                 masked_route = route.clone()
