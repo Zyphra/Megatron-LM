@@ -27,16 +27,15 @@ def sinkhorn(cost, tol=0.0001):
     eps = 0.00000001
     error = 1e9
     d1_old = d1
-    t = 0
     while error > tol:
-        t += 1
         d0 = (1 / d0.size(0)) * 1 / (torch.sum(d1 * cost, 1) + eps)
         d1 = (1 / d1.size(0)) * 1 / (torch.sum(d0.unsqueeze(1) * cost, 0) + eps)
         error = torch.mean(torch.abs(d1_old - d1))
         d1_old = d1
-    if t > 1:
-        print('NUMBER OF STEPS:', t)
-    return d1 * cost * d0.unsqueeze(1)
+    # return d1 * cost * d0.unsqueeze(1)
+    route = torch.softmax(2.0 * cost, dim=0) / torch.sum(torch.softmax(2.0 * cost, dim=0), dim=1, keepdim=True)
+    route = (1/self.num_moe_experts) * (route / torch.sum(route, dim=0, keepdim=True))
+    return route
 
 def save_token_count(token_count, layer, iteration, router_profiling_path):
     token_count_list = token_count.cpu().tolist()    
