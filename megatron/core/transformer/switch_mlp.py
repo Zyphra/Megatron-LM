@@ -34,7 +34,7 @@ def sinkhorn(cost, tol=0.0001):
         d1_old = d1
     return d1 * cost * d0.unsqueeze(1)"""
     route = torch.softmax(2.0 * cost, dim=0) / torch.sum(torch.softmax(2.0 * cost, dim=0), dim=1, keepdim=True)
-    route = (1/self.num_moe_experts) * (route / torch.sum(route, dim=0, keepdim=True))
+    route = (1/cost.size(1)) * (route / torch.sum(route, dim=0, keepdim=True))
     return route
 
 def save_token_count(token_count, layer, iteration, router_profiling_path):
