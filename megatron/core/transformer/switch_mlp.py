@@ -55,8 +55,8 @@ class SwitchMLP(MegatronModule):
         else:
             self.num_moe_experts = self.config.num_moe_experts
         # self.router = torch.nn.Linear(self.config.hidden_size, self.num_moe_experts)
-        self.router = torch.nn.Linear(self.num_moe_experts//2, self.num_moe_experts)
-        self.embeddings = torch.nn.Linear(self.config.hidden_size, self.num_moe_experts//2)
+        self.router = torch.nn.Linear(self.num_moe_experts//2, self.num_moe_experts, bias=False)
+        self.embeddings = torch.nn.Linear(self.config.hidden_size, self.num_moe_experts//2, bias=False)
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2', 'sinkhorn_top2'
         self.layer = layer
