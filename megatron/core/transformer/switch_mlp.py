@@ -54,7 +54,9 @@ class SwitchMLP(MegatronModule):
             self.num_moe_experts = args.moe_layers[layer-1]
         else:
             self.num_moe_experts = self.config.num_moe_experts
-        self.router = torch.nn.Linear(self.config.hidden_size, self.num_moe_experts)
+        # self.router = torch.nn.Linear(self.config.hidden_size, self.num_moe_experts)
+        self.router = torch.nn.Linear(self.num_moe_experts//2, self.num_moe_experts)
+        self.embeddings = torch.nn.Linear(self.config.hidden_size, self.num_moe_experts//2)
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2', 'sinkhorn_top2'
         self.layer = layer
@@ -99,7 +101,8 @@ class SwitchMLP(MegatronModule):
     def forward(self, hidden_states):
         args = get_args()
         hidden_shape = hidden_states.shape
-        route = self.router(hidden_states)
+        embeddings = self.embeddings(hidden_states)
+        route = self.router(embeddings)
         route = route.view(-1, self.num_moe_experts)
 
         if self.config.timers is not None:
