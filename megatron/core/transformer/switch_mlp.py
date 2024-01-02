@@ -103,6 +103,7 @@ class SwitchMLP(MegatronModule):
         hidden_shape = hidden_states.shape
         embeddings = self.embeddings(hidden_states)
         route = self.router(embeddings)
+        route = route / (torch.norm(embeddings) * torch.norm(self.router.weight.data))
         route = route.view(-1, self.num_moe_experts)
 
         if self.config.timers is not None:
