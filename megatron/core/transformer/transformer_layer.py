@@ -54,6 +54,42 @@ class TransformerLayer(MegatronModule):
 
         ## [Module 1: Input Layernorm] Optional Layernorm on the input data
         # TODO: add pytorch only layernorm
+        self.input_layernorm = build_module(
+            submodules.input_layernorm,
+            hidden_size=self.config.hidden_size,
+            eps=self.config.layernorm_epsilon,
+            persist_layer_norm=self.config.persist_layer_norm,
+            sequence_parallel=self.config.sequence_parallel,
+            zero_centered_gamma=self.config.layernorm_zero_centered_gamma,
+            normalization=self.config.normalization,
+        )
+
+        ## [Module 2: SelfAttention]
+        self.self_attention = build_module(
+            submodules.self_attention, config=self.config, layer_number=layer_number,
+        )
+
+        ## [Module 3: BiasDropoutFusion]
+        self.self_attn_bda = build_module(submodules.self_attn_bda)
+
+        ## [Module 4: Post SelfAttention] Optional Layernorm after self-attn
+        self.pre_cross_attn_layernorm = build_module(
+            submodules.pre_cross_attn_layernorm,
+            hidden_size=self.config.hidden_size,
+            eps=self.config.layernorm_epsilon,
+            persist_layer_norm=self.config.persist_layer_norm,
+            sequence_parallel=self.config.sequence_parallel,
+            zero_centered_gamma=self.config.layernorm_zero_centered_gamma,
+            normalization=self.config.normalization,
+        )
+
+        ## [Module 5: CrossAttention]
+        self.cross_attention = build_module(
+            submodules.cross_attention, config=self.config, layer_number=layer_number,
+        )
+
+        ## [Module 6: BiasDropoutFusion]
+        self.cross_attn_bda = build_module(submodules.cross_attn_bda)
 
         ## [Module 7: Post Cross Attention] Optional Layernorm after cross-attn
         self.pre_mlp_layernorm = build_module(
@@ -121,6 +157,48 @@ class TransformerLayer(MegatronModule):
         rotary_pos_emb=None,
     ):
         # hidden_states: [s, b, h]
+
+        # Residual connection.
+        residual = hidden_states
+
+        # Optional Input Layer norm
+        input_layernorm_output = self.input_layernorm(hidden_states)
+
+        # Self attention.
+        attention_output_with_bias = self.self_attention(
+            input_layernorm_output,
+            attention_mask=attention_mask,
+            inference_params=inference_params,
+            rotary_pos_emb=rotary_pos_emb,
+        )
+
+        # TODO: could we move `bias_dropout_add_exec_handler` itself
+        # inside the module provided in the `bias_dropout_add_spec` module?
+        with self.bias_dropout_add_exec_handler():
+            hidden_states = self.self_attn_bda(self.training, self.config.bias_dropout_fusion)(
+                attention_output_with_bias, residual, self.config.hidden_dropout
+            )
+
+        # Residual connection.
+        residual = hidden_states
+
+        # Optional Layer norm after self-attention
+        pre_cross_attn_layernorm_output = self.pre_cross_attn_layernorm(hidden_states)
+
+        # Cross attention.
+        attention_output_with_bias = self.cross_attention(
+            pre_cross_attn_layernorm_output,
+            attention_mask=attention_mask,
+            context=context,
+            inference_params=inference_params,
+        )
+
+        # TODO: could we move `bias_dropout_add_exec_handler` itself
+        # inside the module provided in the `bias_dropout_add_spec` module?
+        with self.bias_dropout_add_exec_handler():
+            hidden_states = self.cross_attn_bda(self.training, self.config.bias_dropout_fusion)(
+                attention_output_with_bias, residual, self.config.hidden_dropout
+            )
 
         # Residual connection.
         residual = hidden_states
