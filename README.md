@@ -91,6 +91,14 @@ A sample plot for `top2` routing mode (obtained from a tiny toy model) is:
 
 <img src="images/token_count.png" alt="Token Counts" width="70%">
 
+## Varying expert number and MLP hidden dimension across layers
+
+To set different number of experts across layers use the flag `--moe-layers` followed by a sequence of integers corresponding to the number of experts per layer. For example, in a model with 5 layers, one can write `--moe-layers 1 8 16 8 1`.
+
+This flag does not currently support pipeline parallelism. Also, for MoE layers, each of these numbers should be multiple of `--expert-model-parallel-size` and greater than 2. For a dense layer, the number should be set to 1.
+
+To change the hidden dimension of MLP's across layers, use the flag `--ffn-hidden-ratio` followed by a sequence of integers corresponding to the ratio between the hidden dimension and the model's embedding dimension. Without this flag, this value is set by default to 4 for all layers (unless `--ff-hidden-size` is used). For example, for a model with 5 layers, one can write `--ffn-hidden-ratio 4 4 2 4 4`.
+
 # NVIDIA Megatron-LM (copied from upstream)
 
 Megatron ([1](https://arxiv.org/pdf/1909.08053.pdf), [2](https://arxiv.org/pdf/2104.04473.pdf), and [3](https://arxiv.org/pdf/2205.05198)) is a large, powerful transformer developed by the Applied Deep Learning Research team at NVIDIA. This repository is for ongoing research on training large transformer language models at scale. We developed efficient, model-parallel ([tensor](https://arxiv.org/pdf/1909.08053.pdf), [sequence](https://arxiv.org/pdf/2205.05198), and [pipeline](https://arxiv.org/pdf/2104.04473.pdf)), and multi-node pre-training of transformer based models such as [GPT](https://arxiv.org/abs/2005.14165), [BERT](https://arxiv.org/pdf/1810.04805.pdf), and [T5](https://arxiv.org/abs/1910.10683) using mixed precision.

@@ -108,7 +108,7 @@ class TransformerLayer(MegatronModule):
         if submodules.mlp.module == SwitchMLP:
             self.mlp = build_module(submodules.mlp, config=self.config, layer=layer_number)
         else:
-            self.mlp = build_module(submodules.mlp, config=self.config)
+            self.mlp = build_module(submodules.mlp, config=self.config, layer=layer_number)
 
         ## [Module 9: BiasDropoutFusion]
         self.mlp_bda = build_module(submodules.mlp_bda)

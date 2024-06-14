@@ -50,8 +50,11 @@ class SwitchMLP(MegatronModule):
         args = get_args()
 
         self.config: TransformerConfig = config
-
-        self.router = torch.nn.Linear(self.config.hidden_size, self.config.num_moe_experts)
+        if args.moe_layers:
+            self.num_moe_experts = args.moe_layers[layer-1]
+        else:
+            self.num_moe_experts = self.config.num_moe_experts
+        self.router = torch.nn.Linear(self.config.hidden_size, self.num_moe_experts)
         self.add_bias = config.add_bias_linear
         self.routing = args.routing_mode # 'sinkhorn', 'top1', 'top2', 'sinkhorn_top2'
         self.layer = layer
@@ -61,8 +64,8 @@ class SwitchMLP(MegatronModule):
         self.router_activation = torch.sigmoid
         self.expert_parallel_size = parallel_state.get_expert_model_parallel_world_size()
 
-        assert self.config.num_moe_experts % self.expert_parallel_size == 0
-        self.num_local_experts = self.config.num_moe_experts // self.expert_parallel_size
+        assert self.num_moe_experts % self.expert_parallel_size == 0
+        self.num_local_experts = self.num_moe_experts // self.expert_parallel_size
         local_expert_indices_offset = (
             parallel_state.get_expert_model_parallel_rank() * self.num_local_experts
         )
@@ -72,7 +75,7 @@ class SwitchMLP(MegatronModule):
 
         self.local_experts = torch.nn.ModuleList()
         for _ in range(self.num_local_experts):
-            expert = MLP(self.config, submodules, is_expert=True)
+            expert = MLP(self.config, submodules, is_expert=True, layer=layer)
             self.local_experts.append(expert)
 
     def gather_indices(self, local_indices):
@@ -97,7 +100,7 @@ class SwitchMLP(MegatronModule):
         args = get_args()
         hidden_shape = hidden_states.shape
         route = self.router(hidden_states)
-        route = route.view(-1, self.config.num_moe_experts)
+        route = route.view(-1, self.num_moe_experts)
 
         if self.config.timers is not None:
             self.config.timers('routing_block1', log_level=2).start()
@@ -163,20 +166,18 @@ class SwitchMLP(MegatronModule):
         if self.config.timers is not None:
             self.config.timers('routing_gather').stop()
 
-
-
         # Evaluate balancing loss.
         if (args.use_balancing_loss is not None) and self.training:
             if hasattr(args, 'l_aux'):
                 me = torch.mean(route, dim=0)
-                mask1 = F.one_hot(global_indices, num_classes=self.config.num_moe_experts)
+                mask1 = F.one_hot(global_indices, num_classes=self.num_moe_experts)
                 ce = torch.mean(mask1.float(), dim=0)
-                args.l_aux += torch.sum(me * ce) * self.config.num_moe_experts
+                args.l_aux += torch.sum(me * ce) * self.num_moe_experts
                 if self.routing == 'top2':
                     me_2 = torch.mean(masked_route, dim=0)
-                    mask1 = F.one_hot(global_indices_2, num_classes=self.config.num_moe_experts)
+                    mask1 = F.one_hot(global_indices_2, num_classes=self.num_moe_experts)
                     ce_2 = torch.mean(mask1.float(), dim=0)
-                    args.l_aux += torch.sum(me_2 * ce_2) * self.config.num_moe_experts
+                    args.l_aux += torch.sum(me_2 * ce_2) * self.num_moe_experts
 
         # Collect token count for each expert and save to file
         if self.router_profiling_interval and (args.curr_iteration % self.router_profiling_interval == 0) and args.curr_iteration > 0:        
@@ -223,7 +224,6 @@ class SwitchMLP(MegatronModule):
         if  self.config.timers is not None:
             self.config.timers('routing_loop').stop()
 
-
         if self.config.timers is not None:
             self.config.timers('ep_scatter', log_level=2).start()
         if self.sequence_parallel or (self.expert_parallel_size > 1):
@@ -259,23 +259,20 @@ class SwitchMLP(MegatronModule):
         if self.config.timers is not None:
             self.config.timers('ep_scatter').stop()
 
-
         if self.config.timers is not None:
             self.config.timers('final_route', log_level=2).start()
         output_total = output_total * max_prob
         if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
-            output_total_2 = output_total_2 * max_prob_2
-            output_total = output_total + output_total_2
+            output_total = (output_total + output_total_2 * max_prob_2)
         output_total = output_total.view(hidden_shape)
         if self.add_bias:
             output_bias_total = output_bias_total * max_prob
             if self.routing == 'top2' or self.routing == 'sinkhorn_top2':
-                output_bias_total_2 = output_bias_total_2 * max_prob_2
-                output_bias_total = output_bias_total + output_bias_total_2
+                output_bias_total = (output_bias_total + output_bias_total_2 * max_prob_2)
             output_bias_total = output_bias_total.view(hidden_shape)
         else:
             output_bias_total = None
         if self.config.timers is not None:
             self.config.timers('final_route').stop()
-
+            
         return output_total, output_bias_total

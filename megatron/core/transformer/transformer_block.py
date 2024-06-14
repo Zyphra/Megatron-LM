@@ -14,6 +14,8 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
 from megatron.core.utils import make_sharded_tensor_for_checkpoint, make_viewless_tensor
+from megatron.core.models.gpt.gpt_layer_specs import gpt_layer_with_transformer_engine_spec
+from megatron import get_args
 
 
 class TransformerBlock(MegatronModule):
@@ -57,12 +59,29 @@ class TransformerBlock(MegatronModule):
         #     coeff = self.layer_number
         #     self.norm_factor *= coeff
         def build_layer(layer_number):
-            layer = TransformerLayer(
-                config=self.config,
-                submodules=transformer_layer_spec.submodules,
-                layer_number=layer_number,
-                self_attn_mask_type=self.self_attn_mask_type,
-            )
+            args = get_args()
+            if args.moe_layers:
+                if args.moe_layers[layer_number-1] == 1:
+                    layer = TransformerLayer(
+                        config=self.config,
+                        submodules=gpt_layer_with_transformer_engine_spec.submodules,
+                        layer_number=layer_number,
+                        self_attn_mask_type=self.self_attn_mask_type,
+                    )
+                else:
+                    layer = TransformerLayer(
+                        config=self.config,
+                        submodules=transformer_layer_spec.submodules,
+                        layer_number=layer_number,
+                        self_attn_mask_type=self.self_attn_mask_type,
+                    )
+            else:
+                layer = TransformerLayer(
+                        config=self.config,
+                        submodules=transformer_layer_spec.submodules,
+                        layer_number=layer_number,
+                        self_attn_mask_type=self.self_attn_mask_type,
+                    )
             return layer
 
         if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:

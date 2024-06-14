@@ -50,6 +50,8 @@ from megatron.utils import report_memory
 from megatron.model.vision.knn_monitor import compute_feature_bank
 from megatron.eval_harness import Evaluator
 
+global prev_params
+prev_params = [[] for i in range(1000)]
 
 def print_datetime(string):
     """Note that this call will sync across all ranks."""
@@ -455,6 +457,16 @@ def train_step(forward_step_func, data_iterator,
         unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
 
     # Update parameters.
+
+    # print("JUST BEFORE STEP:" )
+    if args.curr_iteration % 10 == 0 and torch.distributed.get_rank() == 0 and 1 == 0:
+        for i,(n, p) in enumerate(model[0].named_parameters()):
+            if len(prev_params[i]) == 0:
+                prev_params[i] = p.detach().clone()
+            param_diff = p - prev_params[i]
+            grad_sum = str(p.grad.sum().item()) if p.grad is not None else "NO GRAD!"
+            print(args.curr_iteration, n, p.shape, torch.norm(p).item(), torch.norm(param_diff).item())
+            prev_params[i] = p.detach().clone()
     if args.enable_manual_profiling: torch.cuda.nvtx.range_push(f"Optimizer step")
     timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
     update_successful, grad_norm, num_zeros_in_grad = optimizer.step(args, timers)
