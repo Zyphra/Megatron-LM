@@ -9,7 +9,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from itertools import chain
 from math import ceil
-from typing import Optional, Protocol, Tuple
+from typing import List, Optional, Protocol, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -76,6 +76,23 @@ from megatron.core.inference.moe import ActivationType as McoreActivationType
 from megatron.core.inference.moe import InferenceGroupedGemmBackend, mcore_fused_moe, vllm_fused_moe
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_global_expert_ids(local_expert_indices, num_local_experts, ep_rank):
+    """Return the list of global expert ids owned by this rank in local-slot order.
+
+    With a custom expert placement, ``local_expert_indices`` is provided (and may be
+    non-contiguous). Otherwise (None) it defaults to the contiguous block
+    [ep_rank * num_local_experts, (ep_rank + 1) * num_local_experts).
+    """
+    if local_expert_indices is not None:
+        assert len(local_expert_indices) == num_local_experts, (
+            len(local_expert_indices),
+            num_local_experts,
+        )
+        return list(local_expert_indices)
+    offset = ep_rank * num_local_experts
+    return [offset + i for i in range(num_local_experts)]
 
 
 class GroupedLinearFc1Interface(Protocol):
@@ -183,6 +200,7 @@ class TEGroupedMLP(MegatronModule):
         submodules: GroupedMLPSubmodules,
         pg_collection: Optional[ProcessGroupCollection] = None,
         name: str | None = None,
+        local_expert_indices: Optional[List[int]] = None,
     ):
         """
         Args:
@@ -190,6 +208,8 @@ class TEGroupedMLP(MegatronModule):
         """
         super().__init__(config=config)
         self.num_local_experts = num_local_experts
+        # Global expert ids owned by this rank (custom expert placement); None -> contiguous.
+        self.local_expert_indices = local_expert_indices
         self.input_size = self.config.hidden_size
         assert not (
             self.config.add_bias_linear and config.bias_dropout_fusion
@@ -835,13 +855,20 @@ class TEGroupedMLP(MegatronModule):
         metadata = ensure_metadata_has_dp_cp_group(metadata)
         singleton_local_shards = (metadata or {}).get('singleton_local_shards', False)
         sharded_state_dict = {}
+        # Propagate the (possibly custom / per-layer) expert placement to the underlying TE
+        # grouped-linear modules so their expert-axis offsets use the true global expert ids.
+        for _m in (getattr(self, 'linear_fc1', None), getattr(self, 'linear_fc2', None)):
+            if _m is not None:
+                _m.local_expert_indices = self.local_expert_indices
         for name, module in self._modules.items():
             sub_sd = sharded_state_dict_default(
                 module, f'{name}.', sharded_offsets, metadata, tp_group=self.tp_group
             )
             if name == 'linear_fc1' and self.config.gated_linear_unit:
                 num_global_experts = self.ep_group.size() * self.num_local_experts
-                local_expert_indices_offset = self.ep_group.rank() * self.num_local_experts
+                global_expert_ids = resolve_global_expert_ids(
+                    self.local_expert_indices, self.num_local_experts, self.ep_group.rank()
+                )
                 ep_axis = len(sharded_offsets)
                 for i in range(self.num_local_experts):
                     if singleton_local_shards:
@@ -849,7 +876,7 @@ class TEGroupedMLP(MegatronModule):
                     else:
                         new_sharded_offsets = (
                             *sharded_offsets,
-                            (ep_axis, local_expert_indices_offset + i, num_global_experts),
+                            (ep_axis, global_expert_ids[i], num_global_experts),
                         )
                     for k in (f'{name}.weight{i}', f'{name}.bias{i}'):
                         if k in sub_sd:
@@ -918,6 +945,7 @@ class InferenceGroupedMLP(TEGroupedMLP):
         submodules: GroupedMLPSubmodules,
         pg_collection: Optional[ProcessGroupCollection] = None,
         name: str | None = None,
+        local_expert_indices: Optional[List[int]] = None,
     ):
         # Initialize parent TEGroupedMLP (creates linear_fc1, linear_fc2)
         super().__init__(
@@ -926,6 +954,7 @@ class InferenceGroupedMLP(TEGroupedMLP):
             submodules=submodules,
             pg_collection=pg_collection,
             name=name,
+            local_expert_indices=local_expert_indices,
         )
 
         # Concatenated weights are built lazily on first forward to ensure
@@ -1182,6 +1211,7 @@ class SequentialMLP(MegatronModule):
         submodules: MLPSubmodules,
         pg_collection: Optional[ProcessGroupCollection] = None,
         name: str | None = None,
+        local_expert_indices: Optional[List[int]] = None,
     ):
 
         if config.moe_ffn_hidden_size == config.ffn_hidden_size:
@@ -1194,6 +1224,8 @@ class SequentialMLP(MegatronModule):
             super().__init__(config=sequential_mlp_config)
 
         self.num_local_experts = num_local_experts
+        # Global expert ids owned by this rank (custom expert placement); None -> contiguous.
+        self.local_expert_indices = local_expert_indices
         self.local_experts = torch.nn.ModuleList()
         self.ep_group = pg_collection.ep
         self.tp_group = pg_collection.expt_tp
@@ -1299,12 +1331,14 @@ class SequentialMLP(MegatronModule):
 
         sharded_state_dict = {}
         num_global_experts = self.ep_group.size() * self.num_local_experts
-        local_expert_indices_offset = self.ep_group.rank() * self.num_local_experts
+        global_expert_ids = resolve_global_expert_ids(
+            self.local_expert_indices, self.num_local_experts, self.ep_group.rank()
+        )
 
         singleton_local_shards = (metadata or {}).get('singleton_local_shards', False)
 
         for expert_local_idx, expert in enumerate(self.local_experts):
-            expert_global_idx = local_expert_indices_offset + expert_local_idx
+            expert_global_idx = global_expert_ids[expert_local_idx]
             expert_state_dict_prefix = f'{prefix}local_experts.{expert_local_idx}.'
             if singleton_local_shards:
                 expert_sharded_prefix = f'{prefix}experts.{expert_global_idx}.'
