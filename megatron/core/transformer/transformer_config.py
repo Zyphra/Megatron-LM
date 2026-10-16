@@ -1110,6 +1110,12 @@ class TransformerConfig(ModelParallelConfig):
     Unifies the deprecated per-backend moe_{deepep,hybridep}_num_sms knobs (routed in
     __post_init__)."""
 
+    moe_token_dedup: bool = False
+    """For all-to-all dispatch, send one hidden row per unique (token, destination
+    expert-parallel rank), then fan it out to all selected experts on that rank. The combine
+    direction is deduplicated symmetrically. The default dispatcher is unchanged when this
+    option is disabled."""
+
     moe_deepep_num_sms: Optional[int] = None
     """DEPRECATED: use moe_flex_dispatcher_num_sms. Number of SMs to use for DeepEP (historical
     default 20). If set, routed to moe_flex_dispatcher_num_sms in __post_init__."""
@@ -2169,6 +2175,9 @@ class TransformerConfig(ModelParallelConfig):
 
         if self.num_moe_experts is not None and self.num_moe_experts <= 0:
             raise ValueError("num_moe_experts must be non-negative.")
+
+        if self.moe_token_dedup and self.moe_token_dispatcher_type != "alltoall":
+            raise ValueError("moe_token_dedup only works with alltoall token dispatcher.")
 
         if self.num_moe_experts is not None and self.moe_ffn_hidden_size is None:
             self.moe_ffn_hidden_size = self.ffn_hidden_size
