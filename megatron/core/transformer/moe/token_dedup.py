@@ -47,7 +47,7 @@ if triton is not None:
         output_width: tl.constexpr,
         block_size: tl.constexpr,
     ):
-        row = tl.program_id(0)
+        row = tl.program_id(0).to(tl.int64)
         block = tl.program_id(1)
         columns = block * block_size + tl.arange(0, block_size)
         output_mask = columns < output_width
@@ -101,7 +101,7 @@ if triton is not None:
         topk: tl.constexpr,
         block_size: tl.constexpr,
     ):
-        token = tl.program_id(0)
+        token = tl.program_id(0).to(tl.int64)
         block = tl.program_id(1)
         columns = block * block_size + tl.arange(0, block_size)
         hidden_mask = columns < hidden_size
@@ -163,7 +163,7 @@ if triton is not None:
         block_size: tl.constexpr,
     ):
         """Gather and sum bounded row gradients without metadata handling."""
-        token = tl.program_id(0)
+        token = tl.program_id(0).to(tl.int64)
         block = tl.program_id(1)
         columns = block * block_size + tl.arange(0, block_size)
         hidden_mask = columns < hidden_size
@@ -302,7 +302,7 @@ if triton is not None:
         topk: tl.constexpr,
         block_size: tl.constexpr,
     ):
-        token = tl.program_id(0)
+        token = tl.program_id(0).to(tl.int64)
         block = tl.program_id(1)
         columns = block * block_size + tl.arange(0, block_size)
         hidden_mask = columns < hidden_size
