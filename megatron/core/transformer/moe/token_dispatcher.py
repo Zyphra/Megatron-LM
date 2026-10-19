@@ -1299,8 +1299,9 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             # overlaps the metadata gather still in flight above. Only the
             # a2a itself needs host split values.
             # Scan along tokens via the transposed inner-dim path, which is the
-            # fast cumsum layout for a [T, ep] int64 tensor.
-            order = hits.t().contiguous().cumsum(dim=1).t().contiguous()
+            # fast cumsum layout for a [T, ep] tensor. int32 halves the scan
+            # traffic; the index kernel widens it when adding the int64 base.
+            order = hits.t().contiguous().cumsum(dim=1, dtype=torch.int32).t().contiguous()
             base = dedup_send_counts.cumsum(dim=0) - dedup_send_counts
             max_wire_rows = num_tokens * min(topk, self.ep_size)
             indices, slot_wire_rows, token_wire_rows, wire_tokens_full, wire_experts_full = (

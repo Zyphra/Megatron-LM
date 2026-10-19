@@ -199,48 +199,67 @@ if triton is not None:
         wire_prob_stride,
         hidden_size: tl.constexpr,
         topk: tl.constexpr,
+        topk_pow2: tl.constexpr,
         block_size: tl.constexpr,
     ):
-        assignment = tl.program_id(0)
-        wire_row = assignment // topk
-        slot = assignment % topk
-        expert_row = tl.load(wire_to_expert_rows_ptr + assignment)
-        valid = expert_row >= 0
-        safe_expert_row = tl.where(valid, expert_row, 0)
-        probability = tl.load(
-            wire_prob_ptr + wire_row * wire_prob_stride + slot, mask=valid, other=0.0
-        )
-        accumulator = tl.zeros((block_size,), dtype=tl.float32)
+        """One program per wire row handles all of its ``topk`` expert slots.
+
+        The grad_output row is loaded once per hidden block and reused for
+        every slot (the previous one-program-per-(row, slot) layout reloaded it
+        ``topk`` times and launched ``topk`` x more programs). Every expert row
+        belongs to exactly one (wire row, slot), so the grad_expert stores need
+        no atomics; the per-slot probability gradients are accumulated in
+        registers across the hidden blocks and written once.
+        """
+        wire_row = tl.program_id(0)
         columns = tl.arange(0, block_size)
+        # Per-slot scalar accumulators for d(prob) = sum_h grad_output * expert_value
+        # (tl.arange needs a power-of-two length; lanes >= topk are masked off).
+        prob_acc = tl.zeros((topk_pow2,), dtype=tl.float32)
+        slots = tl.arange(0, topk_pow2)
+        slot_mask = slots < topk
 
         for block in tl.static_range(0, (hidden_size + block_size - 1) // block_size):
             offsets = block * block_size + columns
             hidden_mask = offsets < hidden_size
             grad_output = tl.load(
-                grad_output_ptr + wire_row * hidden_size + offsets,
-                mask=hidden_mask & valid,
-                other=0.0,
+                grad_output_ptr + wire_row * hidden_size + offsets, mask=hidden_mask, other=0.0
             )
-            expert_value = tl.load(
-                expert_output_ptr + safe_expert_row * hidden_size + offsets,
-                mask=hidden_mask & valid,
-                other=0.0,
-            )
-            grad_expert = (grad_output * probability).to(grad_expert_ptr.dtype.element_ty)
-            tl.store(
-                grad_expert_ptr + safe_expert_row * hidden_size + offsets,
-                grad_expert,
-                mask=hidden_mask & valid,
-            )
-            prob_product = (grad_output * expert_value).to(grad_prob_ptr.dtype.element_ty)
-            accumulator += prob_product.to(tl.float32)
+            for slot in tl.static_range(0, topk):
+                expert_row = tl.load(wire_to_expert_rows_ptr + wire_row * topk + slot)
+                valid = expert_row >= 0
+                safe_expert_row = tl.where(valid, expert_row, 0)
+                probability = tl.load(
+                    wire_prob_ptr + wire_row * wire_prob_stride + slot, mask=valid, other=0.0
+                )
+                expert_value = tl.load(
+                    expert_output_ptr + safe_expert_row * hidden_size + offsets,
+                    mask=hidden_mask & valid,
+                    other=0.0,
+                )
+                grad_expert = (grad_output * probability).to(grad_expert_ptr.dtype.element_ty)
+                tl.store(
+                    grad_expert_ptr + safe_expert_row * hidden_size + offsets,
+                    grad_expert,
+                    mask=hidden_mask & valid,
+                )
+                # Match the previous kernel's rounding: the product is rounded to the
+                # gradient dtype before the fp32 reduction.
+                prob_product = (grad_output * expert_value).to(grad_prob_ptr.dtype.element_ty)
+                partial = tl.sum(prob_product.to(tl.float32), axis=0)
+                prob_acc += tl.where(slots == slot, partial, 0.0)
 
-        tl.store(grad_prob_ptr + assignment, tl.sum(accumulator, axis=0), mask=valid)
+        slot_rows = tl.load(
+            wire_to_expert_rows_ptr + wire_row * topk + slots, mask=slot_mask, other=-1
+        )
+        tl.store(
+            grad_prob_ptr + wire_row * topk + slots, prob_acc, mask=slot_mask & (slot_rows >= 0)
+        )
 
     @triton.jit
     def _build_wire_send_index_kernel(
         routing_map_ptr,  # uint8 [T, E], slot-space routing bits
-        order_ptr,  # int64 [T, EP], inclusive per-destination token prefix of hits
+        order_ptr,  # int32 [T, EP], inclusive per-destination token prefix of hits
         base_ptr,  # int64 [EP], exclusive per-destination wire-row base
         indices_ptr,  # int64 [T, K] out: set-bit expert ids, ascending
         slot_wire_rows_ptr,  # int64 [T, K] out: wire row of every route slot
@@ -301,36 +320,6 @@ if triton is not None:
         tl.store(token_wire_rows_ptr + token * topk + slot, tl.where(rep, wire, -1), mask=slot_ok)
         tl.store(wire_tokens_ptr + wire, token.to(tl.int64), mask=rep)
         tl.store(wire_experts_ptr + wire * topk + slot, local_expert, mask=slot_ok)
-
-    @triton.jit
-    def _build_wire_recv_index_kernel(
-        experts_ptr,  # int64 [R, K], received local experts (-1 inactive)
-        order_ptr,  # int64 [nle, R*K], inclusive per-expert membership prefix
-        base_ptr,  # int64 [nle], exclusive expert-major row base
-        wire_to_expert_rows_ptr,  # int64 [R, K] out: expert row per slot, else -1
-        expert_wire_rows_ptr,  # int64 [A] out: expert-major row -> wire row
-        total_flat,  # R * K
-        topk: tl.constexpr,
-        topk_pow2: tl.constexpr,
-    ):
-        """One program per received wire row builds the receive-side indices.
-
-        Replaces the ~19-launch torch composition in ``_expand_received``.
-        Expert-major numbering: ``base[e] + order[e, flat_slot] - 1`` reproduces
-        the membership-compaction order (rows ascending within an expert).
-        """
-        row = tl.program_id(0)
-        ks = tl.arange(0, topk_pow2)
-        kmask = ks < topk
-        expert = tl.load(experts_ptr + row * topk + ks, mask=kmask, other=-1)
-        valid = kmask & (expert >= 0)
-        safe_expert = tl.where(valid, expert, 0)
-        flat = row * topk + ks
-        order_e = tl.load(order_ptr + safe_expert * total_flat + flat, mask=valid, other=0)
-        base_e = tl.load(base_ptr + safe_expert, mask=valid, other=0)
-        expert_row = base_e + order_e - 1
-        tl.store(wire_to_expert_rows_ptr + flat, tl.where(valid, expert_row, -1), mask=kmask)
-        tl.store(expert_wire_rows_ptr + expert_row, row.to(tl.int64), mask=valid)
 
     @triton.jit
     def _restore_token_dedup_kernel(
@@ -597,7 +586,8 @@ class _WeightedReduceTokenDedup(torch.autograd.Function):
         grad_expert = torch.empty_like(expert_output)
         grad_prob = torch.zeros_like(wire_probs)
         block_size = 1024
-        grid = (num_wire_rows * topk,)
+        # One program per wire row (not per (row, slot)): see the kernel docstring.
+        grid = (num_wire_rows,)
         _weighted_reduce_token_dedup_backward_kernel[grid](
             grad_output,
             expert_output,
@@ -608,6 +598,7 @@ class _WeightedReduceTokenDedup(torch.autograd.Function):
             wire_probs.stride(0),
             hidden_size=expert_output.shape[1],
             topk=topk,
+            topk_pow2=triton.next_power_of_2(topk),
             block_size=block_size,
             num_warps=8,
         )
@@ -756,33 +747,38 @@ def build_wire_send_index(
 def build_wire_recv_index(
     received_experts: torch.Tensor, tokens_per_local_expert: torch.Tensor, num_assignments: int
 ):
-    """Build the receive-side expert-major indices with one kernel launch.
+    """Build the receive-side expert-major indices.
 
     Returns ``(wire_to_expert_rows, expert_wire_rows)``: the former maps each
     received (wire row, slot) to its expert-major row (-1 inactive), the latter
     maps each expert-major row back to its wire row -- exactly what the torch
-    membership-compaction path in ``_expand_received`` produced.
+    membership-compaction path in ``_expand_received`` produced (rows ascending
+    within an expert, experts ascending).
+
+    Implemented as one stable radix sort of the ``[rows * topk]`` local expert
+    ids: the sorted position of an active slot, minus the number of inactive
+    (-1) slots which sort first, IS its expert-major row. The previous
+    ``[num_local_experts, rows * topk]`` membership prefix-sum ran as one scan
+    block per expert (16 blocks for ~175k columns) and was the single most
+    expensive dedup kernel per step; the sort is fully parallel and gives the
+    identical ordering. ``tokens_per_local_expert`` is kept for API
+    compatibility (the sort does not need the per-expert bases).
     """
     num_rows, topk = received_experts.shape
     device = received_experts.device
     flat_experts = received_experts.reshape(-1)
-    num_local_experts = tokens_per_local_expert.shape[0]
-    membership = torch.arange(num_local_experts, device=device).unsqueeze(
-        1
-    ) == flat_experts.unsqueeze(0)
-    order = membership.cumsum(1)
-    base = tokens_per_local_expert.cumsum(0) - tokens_per_local_expert
-    wire_to_expert_rows = torch.empty((num_rows, topk), dtype=torch.long, device=device)
+    total_flat = flat_experts.numel()
+    wire_to_expert_rows = torch.full((num_rows, topk), -1, dtype=torch.long, device=device)
     expert_wire_rows = torch.empty((num_assignments,), dtype=torch.long, device=device)
-    if num_rows:
-        _build_wire_recv_index_kernel[(num_rows,)](
-            received_experts.contiguous(),
-            order,
-            base,
-            wire_to_expert_rows,
-            expert_wire_rows,
-            flat_experts.numel(),
-            topk=topk,
-            topk_pow2=triton.next_power_of_2(topk),
-        )
+    if num_rows == 0 or num_assignments == 0:
+        return wire_to_expert_rows, expert_wire_rows
+    # Stable sort groups equal expert ids while preserving flat (wire-row,
+    # slot) order inside each group; inactive slots (-1) land first.
+    _, perm = torch.sort(flat_experts, stable=True)
+    num_inactive = total_flat - num_assignments
+    active_slots = perm.narrow(0, num_inactive, num_assignments)  # flat slot of expert-major row j
+    expert_wire_rows.copy_(torch.div(active_slots, topk, rounding_mode="floor"))
+    wire_to_expert_rows.view(-1).index_copy_(
+        0, active_slots, torch.arange(num_assignments, dtype=torch.long, device=device)
+    )
     return wire_to_expert_rows, expert_wire_rows
