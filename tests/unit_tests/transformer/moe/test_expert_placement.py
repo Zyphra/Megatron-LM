@@ -163,3 +163,36 @@ class TestExpertPlacementDispatch:
         )
         assert container.moe_layer.token_dispatcher.expert_order_is_identity is True
         container.dispatcher_dropless_test()
+
+    @pytest.mark.internal
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("ep_size", [2, 8])
+    @pytest.mark.parametrize("dedup", [False, True])
+    def test_placed_layer_matches_default_layer(self, ep_size, dedup):
+        """Experts keyed by global id must compute the same layer under any placement."""
+        container = MoEModelTestContainer(
+            tp_size=1, ep_size=ep_size, pp_size=1, num_moe_experts=16, moe_router_topk=4
+        )
+        perm = torch.randperm(16, generator=torch.Generator().manual_seed(0)).tolist()
+        placed = container.new_moe_layer(
+            moe_expert_placement={"default": None, "layers": {0: perm}}, moe_token_dedup=dedup
+        )
+        layers = (container.moe_layer, placed)
+        assert placed.token_dispatcher.expert_order == perm
+        placed.router.load_state_dict(container.moe_layer.router.state_dict())
+        for layer in layers:
+            for expert, gid in zip(layer.experts.local_experts, layer.local_expert_indices):
+                gen = torch.Generator().manual_seed(gid)
+                for p in expert.parameters():
+                    p.data.copy_(torch.randn(p.shape, generator=gen) * 0.1)
+        gen = torch.Generator(device="cuda").manual_seed(torch.distributed.get_rank())
+        x = torch.randn(32, 2, container.config.hidden_size, device="cuda", generator=gen)
+        grad = torch.randn(x.shape, device="cuda", generator=gen)
+        results = []
+        for layer in layers:
+            inp = x.clone().requires_grad_()
+            out, _ = layer(inp)
+            out.backward(grad)
+            results.append((out, inp.grad, layer.router.weight.grad))
+        for ref, got in zip(*results):
+            torch.testing.assert_close(got, ref)
