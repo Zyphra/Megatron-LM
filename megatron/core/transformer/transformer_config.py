@@ -866,6 +866,12 @@ class TransformerConfig(ModelParallelConfig):
     direction is deduplicated symmetrically. The default dispatcher is unchanged when this
     option is disabled."""
 
+    moe_token_dedup_weighted_combine: bool = True
+    """With moe_token_dedup, apply the routing probabilities in the combine's reduce kernel
+    (one weighted sum per wire row) instead of inside the experts, which then skip their
+    per-row multiply. Numerically equivalent; faster on the TE grouped-GEMM path. Ignored
+    (experts-side weighting is used) when moe_apply_probs_on_input is set."""
+
     moe_deepep_num_sms: int = 20
     """Number of SMs to use for DeepEP."""
 

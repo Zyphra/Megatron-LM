@@ -2,8 +2,8 @@
 # Copyright (c) 2026, Zyphra Technologies Inc. All rights reserved.
 
 import logging
-from abc import ABC, abstractmethod
 import os
+from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple
 
 import torch
@@ -47,10 +47,11 @@ from megatron.core.transformer.moe.token_dedup import (
     fused_index_build_available,
     pack_token_dedup_payload,
     permute_token_dedup_expert_output,
+    reduce_token_dedup_expert_output,
     restore_token_dedup_output,
     routing_counts,
     unpack_token_dedup_payload,
-    reduce_token_dedup_expert_output,
+    weighted_reduce_token_dedup_expert_output,
 )
 from megatron.core.transformer.transformer_config import TransformerConfig
 
@@ -1395,14 +1396,27 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             )
             self._dedup_wire_to_expert_rows = wire_to_expert_rows
             self._dedup_expert_wire_rows = expert_wire_rows
+            # Weighted combine (default): the routing weights are applied in the combine's
+            # reduce kernel and the experts get no probabilities; experts-side weighting
+            # remains for moe_apply_probs_on_input.
+            weighted = (
+                self.config.moe_token_dedup_weighted_combine
+                and not self.config.moe_apply_probs_on_input
+            )
             expanded, permuted_probs = unpack_token_dedup_payload(
                 global_input_tokens, expert_wire_rows, wire_to_expert_rows, expert_probs,
-                hidden_size, self._dedup_topk,
+                hidden_size, self._dedup_topk, weighted,
             )
-            permuted_probs = permuted_probs.to(self.probs.dtype)
+            if weighted:
+                self._dedup_wire_probs = permuted_probs
+                permuted_probs = None
+            else:
+                self._dedup_wire_probs = None
+                permuted_probs = permuted_probs.to(self.probs.dtype)
             if self.shared_experts is not None:
                 self.shared_experts.linear_fc1_forward_and_act(expanded)
         else:
+            self._dedup_wire_probs = None
             received_experts = received_expert_cols.to(dtype=torch.long)
             expanded = self._expand_received(received, received_experts)
             if self.shared_experts is not None:
@@ -1423,6 +1437,10 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
 
     def combine_preprocess(self, hidden_states):
         """Sum the (already weighted) local expert outputs to one row per wire row."""
+        if getattr(self, "_dedup_wire_probs", None) is not None:
+            return weighted_reduce_token_dedup_expert_output(
+                hidden_states, self._dedup_wire_to_expert_rows, self._dedup_wire_probs
+            )
         return reduce_token_dedup_expert_output(
             hidden_states, self._dedup_expert_wire_rows, self._dedup_wire_to_expert_rows
         )
@@ -1454,6 +1472,7 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         self._dedup_wire_tokens = None
         self._dedup_wire_to_expert_rows = None
         self._dedup_expert_wire_rows = None
+        self._dedup_wire_probs = None
         self._dedup_destinations = None
         self._dedup_hits = None
         if self.shared_experts is not None:

@@ -506,6 +506,90 @@ if triton is not None:
         tl.store(expert_probs_ptr + expert_row, prob.to(tl.float32), mask=valid)
 
     @triton.jit
+    def _weighted_reduce_token_dedup_kernel(
+        expert_output_ptr,
+        wire_to_expert_rows_ptr,
+        wire_prob_ptr,
+        output_ptr,
+        wire_prob_stride,
+        hidden_size: tl.constexpr,
+        topk: tl.constexpr,
+        block_size: tl.constexpr,
+    ):
+        """One program per (wire row, hidden tile): probability-weighted sum of the
+        wire row's expert rows (the paper-era combine; experts then skip the multiply)."""
+        wire_row = tl.program_id(0).to(tl.int64)
+        block = tl.program_id(1)
+        columns = block * block_size + tl.arange(0, block_size)
+        hidden_mask = columns < hidden_size
+        accumulator = tl.zeros((block_size,), dtype=tl.float32)
+        for slot in tl.static_range(0, topk):
+            expert_row = tl.load(wire_to_expert_rows_ptr + wire_row * topk + slot)
+            valid = expert_row >= 0
+            safe_expert_row = tl.where(valid, expert_row, 0)
+            expert_value = tl.load(
+                expert_output_ptr + safe_expert_row * hidden_size + columns,
+                mask=hidden_mask & valid,
+                other=0.0,
+            )
+            probability = tl.load(
+                wire_prob_ptr + wire_row * wire_prob_stride + slot, mask=valid, other=0.0
+            )
+            # Round each weighted product to the activation dtype before the sum,
+            # matching the eager expression the stock dispatcher produces.
+            product = (expert_value * probability).to(output_ptr.dtype.element_ty)
+            accumulator += product.to(tl.float32)
+        tl.store(output_ptr + wire_row * hidden_size + columns, accumulator, mask=hidden_mask)
+
+    @triton.jit
+    def _weighted_reduce_token_dedup_backward_kernel(
+        grad_output_ptr,
+        expert_output_ptr,
+        wire_to_expert_rows_ptr,
+        wire_prob_ptr,
+        grad_expert_ptr,
+        grad_prob_ptr,
+        wire_prob_stride,
+        grad_prob_stride,
+        hidden_size: tl.constexpr,
+        topk: tl.constexpr,
+        block_size: tl.constexpr,
+    ):
+        """One program per (wire row, slot): grad of the expert row = grad_out * p, and
+        grad of p = <grad_out, expert row>. Every expert row has exactly one owner slot."""
+        assignment = tl.program_id(0).to(tl.int64)
+        wire_row = assignment // topk
+        slot = assignment % topk
+        expert_row = tl.load(wire_to_expert_rows_ptr + assignment)
+        valid = expert_row >= 0
+        safe_expert_row = tl.where(valid, expert_row, 0)
+        probability = tl.load(
+            wire_prob_ptr + wire_row * wire_prob_stride + slot, mask=valid, other=0.0
+        )
+        accumulator = tl.zeros((block_size,), dtype=tl.float32)
+        columns = tl.arange(0, block_size)
+        for block in tl.static_range(0, (hidden_size + block_size - 1) // block_size):
+            offsets = block * block_size + columns
+            hidden_mask = offsets < hidden_size
+            grad_output = tl.load(
+                grad_output_ptr + wire_row * hidden_size + offsets, mask=hidden_mask & valid, other=0.0
+            )
+            expert_value = tl.load(
+                expert_output_ptr + safe_expert_row * hidden_size + offsets,
+                mask=hidden_mask & valid,
+                other=0.0,
+            )
+            tl.store(
+                grad_expert_ptr + safe_expert_row * hidden_size + offsets,
+                (grad_output * probability).to(grad_expert_ptr.dtype.element_ty),
+                mask=hidden_mask & valid,
+            )
+            accumulator += (grad_output * expert_value).to(tl.float32)
+        tl.store(
+            grad_prob_ptr + wire_row * grad_prob_stride + slot, tl.sum(accumulator, axis=0), mask=valid
+        )
+
+    @triton.jit
     def _restore_token_dedup_kernel(
         returned_ptr,
         token_wire_rows_ptr,
@@ -803,6 +887,49 @@ class _RestoreTokenDedup(torch.autograd.Function):
         return grad_output.index_select(0, wire_tokens), None, None
 
 
+class _WeightedReduceTokenDedup(torch.autograd.Function):
+    """Probability-weighted sum of each wire row's expert rows (paper-era combine).
+    The experts receive no probabilities in this mode; the weights are applied here
+    and their gradient flows back into the received payload's probability columns."""
+
+    @staticmethod
+    def forward(ctx, expert_output, wire_to_expert_rows, wire_probs):
+        num_wire_rows, topk = wire_to_expert_rows.shape
+        hidden_size = expert_output.shape[1]
+        wire_probs = wire_probs.contiguous()
+        ctx.save_for_backward(expert_output, wire_to_expert_rows, wire_probs)
+        output = expert_output.new_empty((num_wire_rows, hidden_size))
+        if num_wire_rows:
+            block_size = 1024
+            grid = (num_wire_rows, triton.cdiv(hidden_size, block_size))
+            _weighted_reduce_token_dedup_kernel[grid](
+                expert_output, wire_to_expert_rows, wire_probs, output, wire_probs.stride(0),
+                hidden_size=hidden_size, topk=topk, block_size=block_size,
+            )
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        expert_output, wire_to_expert_rows, wire_probs = ctx.saved_tensors
+        num_wire_rows, topk = wire_to_expert_rows.shape
+        hidden_size = expert_output.shape[1]
+        grad_expert = torch.empty_like(expert_output)
+        grad_prob = torch.zeros_like(wire_probs)
+        if num_wire_rows:
+            grad_output = grad_output.contiguous()
+            _weighted_reduce_token_dedup_backward_kernel[(num_wire_rows * topk,)](
+                grad_output, expert_output, wire_to_expert_rows, wire_probs, grad_expert, grad_prob,
+                wire_probs.stride(0), grad_prob.stride(0),
+                hidden_size=hidden_size, topk=topk, block_size=1024,
+            )
+        return grad_expert, None, grad_prob
+
+
+def weighted_reduce_token_dedup_expert_output(expert_output, wire_to_expert_rows, wire_probs):
+    """Return one probability-weighted expert-output row per wire row."""
+    return _WeightedReduceTokenDedup.apply(expert_output, wire_to_expert_rows, wire_probs)
+
+
 class _UnpackTokenDedupPayload(torch.autograd.Function):
     """Expand the received payload's activations to expert-major rows and hand out the
     per-expert-row probabilities, writing the payload gradient in ONE pass.
@@ -822,11 +949,16 @@ class _UnpackTokenDedupPayload(torch.autograd.Function):
         expert_probs: torch.Tensor,
         hidden_size: int,
         topk: int,
+        return_wire_probs: bool = False,
     ):
         ctx.save_for_backward(expert_wire_rows, wire_to_expert_rows)
         ctx.hidden_size, ctx.topk = hidden_size, topk
         ctx.payload_shape, ctx.payload_dtype = payload.shape, payload.dtype
+        ctx.return_wire_probs = return_wire_probs
         expanded = payload[:, :hidden_size].index_select(0, expert_wire_rows)
+        if return_wire_probs:
+            # The [R, K] probability columns themselves (weighted-combine mode).
+            return expanded, payload[:, hidden_size + topk : hidden_size + 2 * topk].contiguous()
         return expanded, expert_probs
 
     @staticmethod
@@ -852,12 +984,15 @@ class _UnpackTokenDedupPayload(torch.autograd.Function):
             )
         # Expert-id columns and alignment padding carry no gradient; probabilities do.
         grad_payload[:, hidden_size:].zero_()
-        if grad_expert_probs is not None and num_rows:
+        if ctx.return_wire_probs:
+            if grad_expert_probs is not None and num_rows:
+                grad_payload[:, hidden_size + topk : hidden_size + 2 * topk].copy_(grad_expert_probs)
+        elif grad_expert_probs is not None and num_rows:
             valid = wire_to_expert_rows >= 0
             grad = grad_expert_probs.index_select(0, wire_to_expert_rows.clamp(min=0).reshape(-1))
             grad = torch.where(valid, grad.view_as(wire_to_expert_rows), torch.zeros((), dtype=grad.dtype, device=grad.device))
             grad_payload[:, hidden_size + topk : hidden_size + 2 * topk].copy_(grad)
-        return grad_payload, None, None, None, None, None
+        return grad_payload, None, None, None, None, None, None
 
 
 def unpack_token_dedup_payload(
@@ -867,11 +1002,14 @@ def unpack_token_dedup_payload(
     expert_probs: torch.Tensor,
     hidden_size: int,
     topk: int,
+    return_wire_probs: bool = False,
 ):
-    """Return ``(expanded, expert_probs)`` from the received payload with a single
-    fused backward into the payload gradient."""
+    """Return ``(expanded, probs)`` from the received payload with a single fused
+    backward into the payload gradient. ``probs`` is the per-expert-row probability
+    vector, or with ``return_wire_probs`` the ``[R, K]`` wire-row probabilities."""
     return _UnpackTokenDedupPayload.apply(
-        payload, expert_wire_rows, wire_to_expert_rows, expert_probs, hidden_size, topk
+        payload, expert_wire_rows, wire_to_expert_rows, expert_probs, hidden_size, topk,
+        return_wire_probs,
     )
 
 

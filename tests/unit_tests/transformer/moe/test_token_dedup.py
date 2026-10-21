@@ -173,14 +173,17 @@ def test_reduce_and_restore_sum_expert_rows():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 @pytest.mark.parametrize("ep_size,topk", [(2, 2), (8, 2), (8, 6)])
-def test_dedup_matches_alltoall_dispatcher(ep_size, topk):
+@pytest.mark.parametrize("weighted_combine", [False, True])
+def test_dedup_matches_alltoall_dispatcher(ep_size, topk, weighted_combine):
     from tests.unit_tests.test_utilities import Utils
     from tests.unit_tests.transformer.moe.test_token_dispatcher import MoEModelTestContainer
 
     container = MoEModelTestContainer(
         tp_size=1, ep_size=ep_size, pp_size=1, num_moe_experts=32, moe_router_topk=topk
     )
-    dedup = container.new_moe_layer(moe_token_dedup=True)
+    dedup = container.new_moe_layer(
+        moe_token_dedup=True, moe_token_dedup_weighted_combine=weighted_combine
+    )
     dedup.load_state_dict(container.moe_layer.state_dict())
     assert isinstance(dedup.token_dispatcher, MoEDeduplicatingAlltoAllTokenDispatcher)
     gen = torch.Generator(device="cuda").manual_seed(torch.distributed.get_rank())

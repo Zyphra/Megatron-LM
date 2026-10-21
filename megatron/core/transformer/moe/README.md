@@ -444,6 +444,9 @@ same EP rank. `--moe-token-dedup` sends one row per unique (token, destination r
 expert ids and routing weights, the receiver expands it into expert-major order for the grouped GEMM, and the combine
 is deduplicated the same way. Routing and the rows each expert computes are unchanged; the routing weights travel in
 the activation dtype and the summation order of a token's expert outputs differs (both at bf16 rounding level).
+The combine applies the routing weights while it sums a wire row's expert outputs (`moe_token_dedup_weighted_combine`,
+default True), so the experts skip their per-row multiply; with `--moe-apply-probs-on-input` the weights are applied on
+the expert inputs as usual.
 
 > **Requirements**: `--moe-token-dispatcher-type alltoall`, `expert_model_parallel_size > 1`,
 > `--expert-tensor-parallel-size 1`, dropless routing (no capacity factor).
