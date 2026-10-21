@@ -48,6 +48,8 @@ from megatron.core.transformer.moe.token_dedup import (
     pack_token_dedup_payload,
     permute_token_dedup_expert_output,
     restore_token_dedup_output,
+    routing_counts,
+    unpack_token_dedup_payload,
     reduce_token_dedup_expert_output,
 )
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -1050,9 +1052,7 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         self._dedup_expert_wire_rows = None
         self._dedup_topk = 0
 
-    def _metadata_gather_launch(
-        self, expert_counts: torch.Tensor, dedup_send_counts: torch.Tensor
-    ) -> torch.Tensor:
+    def _metadata_gather_launch(self, packed: torch.Tensor) -> torch.Tensor:
         """Launch the one packed metadata all-gather; do NOT touch the host.
 
         The stock path separately copies input splits, output splits, local
@@ -1062,7 +1062,6 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         payload pack can overlap the gather's in-flight time (including the
         wait for straggling peers).
         """
-        packed = torch.cat((expert_counts, dedup_send_counts))
         gathered_all = packed.new_empty(self.ep_size * packed.numel())
         # async_op=True is the whole point: a synchronous gather enqueues a
         # stream-wait on the CURRENT stream before returning, so every kernel
@@ -1199,8 +1198,9 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             self._dedup_expert_wire_rows = received_experts.new_empty(0)
             return received[:0]
         if fused_index_build_available(received.device):
-            wire_to_expert_rows, expert_wire_rows = build_wire_recv_index(
-                received_experts, self.tokens_per_expert_gpu, num_assignments
+            wire_to_expert_rows, expert_wire_rows, _ = build_wire_recv_index(
+                received_experts, self.tokens_per_expert_gpu, num_assignments,
+                received_experts.new_zeros(received_experts.shape, dtype=received.dtype),
             )
             if num_assignments == received.shape[0]:
                 # No destination collisions: a permutation, gather-only backward.
@@ -1274,14 +1274,25 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         hidden_size = self.hidden_shape[-1]
         use_fused = fused_index_build_available(routing_map.device)
 
-        # [num_experts] in slot space; equivalent to bincount but sync-free.
-        expert_counts = routing_map.sum(dim=0, dtype=torch.long)
-        # [tokens, ep_size]: does the token route to that destination rank?
-        # Destinations are contiguous expert-id blocks in slot space, so this
-        # is a reshape+any rather than the [ep, tokens, topk] broadcast.
-        hits = routing_map.reshape(num_tokens, self.ep_size, self.num_local_experts).any(dim=-1)
-        dedup_send_counts = hits.sum(dim=0, dtype=torch.long)
-        gathered = self._metadata_gather_launch(expert_counts, dedup_send_counts)
+        if use_fused:
+            # One fused pass: expert counts | destination counts (the all-gather payload),
+            # the [tokens, ep_size] destination hit map, and its per-block partial sums
+            # (reused by the token prefix scan).
+            packed, hits, hit_partial = routing_counts(
+                routing_map, self.num_local_experts, self.ep_size
+            )
+            dedup_send_counts = packed[self.num_experts :]
+            hit_block_counts, hit_block = hit_partial[:, self.num_experts :], 256
+        else:
+            # [num_experts] in slot space; equivalent to bincount but sync-free.
+            expert_counts = routing_map.sum(dim=0, dtype=torch.long)
+            # [tokens, ep_size]: does the token route to that destination rank?
+            # Destinations are contiguous expert-id blocks in slot space, so this
+            # is a reshape+any rather than the [ep, tokens, topk] broadcast.
+            hits = routing_map.reshape(num_tokens, self.ep_size, self.num_local_experts).any(dim=-1)
+            dedup_send_counts = hits.sum(dim=0, dtype=torch.long)
+            packed = torch.cat((expert_counts, dedup_send_counts))
+        gathered = self._metadata_gather_launch(packed)
 
         if use_fused:
             # Everything here is local-only GPU work sized by an upper bound
@@ -1290,8 +1301,6 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             # a2a itself needs host split values.
             # Scan along tokens via the transposed inner-dim path: ROCm's
             # outer-dim scan kernel is ~60x slower at [T, ep] long.
-            order = hits.t().contiguous().cumsum(dim=1).t().contiguous()
-            base = dedup_send_counts.cumsum(dim=0) - dedup_send_counts
             max_wire_rows = num_tokens * min(topk, self.ep_size)
             (
                 indices,
@@ -1301,12 +1310,14 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
                 wire_experts_full,
             ) = build_wire_send_index(
                 routing_map,
-                order,
-                base,
+                hits,
+                dedup_send_counts,
                 self.num_local_experts,
                 self.ep_size,
                 topk,
                 max_wire_rows,
+                hit_block_counts=hit_block_counts,
+                hit_block=hit_block,
             )
             # Differentiable slot-probability gather: routing-probability
             # gradients flow back to the router through this op.
@@ -1367,21 +1378,41 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         """Unpack the received payload and fan wire rows into expert-major order."""
         hidden_size = self.hidden_shape[-1]
         received = global_input_tokens[:, :hidden_size]
-        received_experts = global_input_tokens[
+        received_expert_cols = global_input_tokens[
             :, hidden_size : hidden_size + self._dedup_topk
-        ].to(dtype=torch.long)
+        ]
         received_probs = global_input_tokens[
             :, hidden_size + self._dedup_topk : hidden_size + 2 * self._dedup_topk
         ]
-        expanded = self._expand_received(received, received_experts)
-        if self.shared_experts is not None:
-            self.shared_experts.linear_fc1_forward_and_act(expanded)
-        # Weight inside the experts as the stock dispatcher does; the combine then only sums.
-        wire_rows = self._dedup_expert_wire_rows
-        rows = torch.arange(wire_rows.numel(), device=wire_rows.device).unsqueeze(1)
-        wire_slots = self._dedup_wire_to_expert_rows.index_select(0, wire_rows) == rows
-        flat_slots = wire_rows * self._dedup_topk + wire_slots.to(torch.int8).argmax(dim=1)
-        permuted_probs = received_probs.reshape(-1)[flat_slots].to(self.probs.dtype)
+        num_assignments = sum(self.output_splits)
+        if fused_index_build_available(received.device) and num_assignments > 0:
+            # One kernel builds the expert-major indices and gathers each expert row's
+            # probability; one autograd node expands the payload and owns the whole
+            # payload gradient (no per-slice zero-fill + add in backward).
+            wire_to_expert_rows, expert_wire_rows, expert_probs = build_wire_recv_index(
+                received_expert_cols.detach(), self.tokens_per_expert_gpu, num_assignments,
+                received_probs.detach(),
+            )
+            self._dedup_wire_to_expert_rows = wire_to_expert_rows
+            self._dedup_expert_wire_rows = expert_wire_rows
+            expanded, permuted_probs = unpack_token_dedup_payload(
+                global_input_tokens, expert_wire_rows, wire_to_expert_rows, expert_probs,
+                hidden_size, self._dedup_topk,
+            )
+            permuted_probs = permuted_probs.to(self.probs.dtype)
+            if self.shared_experts is not None:
+                self.shared_experts.linear_fc1_forward_and_act(expanded)
+        else:
+            received_experts = received_expert_cols.to(dtype=torch.long)
+            expanded = self._expand_received(received, received_experts)
+            if self.shared_experts is not None:
+                self.shared_experts.linear_fc1_forward_and_act(expanded)
+            # Weight inside the experts as the stock dispatcher does; the combine then only sums.
+            wire_rows = self._dedup_expert_wire_rows
+            rows = torch.arange(wire_rows.numel(), device=wire_rows.device).unsqueeze(1)
+            wire_slots = self._dedup_wire_to_expert_rows.index_select(0, wire_rows) == rows
+            flat_slots = wire_rows * self._dedup_topk + wire_slots.to(torch.int8).argmax(dim=1)
+            permuted_probs = received_probs.reshape(-1)[flat_slots].to(self.probs.dtype)
         tokens_per_expert = self.tokens_per_expert
         self.tokens_per_expert = None
         if os.environ.get("NVTE_USE_GROUPED_GEMM_TRITON") == "1":

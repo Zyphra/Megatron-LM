@@ -157,6 +157,7 @@ if triton is not None:
         grad_hidden_ptr,
         grad_output_stride_0,
         grad_output_stride_1,
+        grad_hidden_stride_0,
         num_grad_output_rows,
         hidden_size: tl.constexpr,
         topk: tl.constexpr,
@@ -185,16 +186,101 @@ if triton is not None:
             accumulator += value
 
         tl.store(
-            grad_hidden_ptr + token * hidden_size + columns,
+            grad_hidden_ptr + token * grad_hidden_stride_0 + columns,
             accumulator,
             mask=hidden_mask,
         )
 
     @triton.jit
+    def _segment_count_kernel(
+        keys_ptr,  # int64 [n] keys in [-1, num_keys); -1 = inactive
+        counts_ptr,  # int32 [num_blocks, num_keys] out
+        n,
+        num_keys: tl.constexpr,
+        block: tl.constexpr,
+    ):
+        """Per block of ``block`` keys, count how often each key occurs."""
+        pid = tl.program_id(0)
+        offs = pid * block + tl.arange(0, block)
+        keys = tl.load(keys_ptr + offs, mask=offs < n, other=-1)
+        for key in tl.static_range(num_keys):
+            count = tl.sum((keys == key).to(tl.int32), axis=0)
+            tl.store(counts_ptr + pid * num_keys + key, count)
+
+    @triton.jit
+    def _segment_rank_kernel(
+        keys_ptr,  # int64 [n]
+        counts_ptr,  # int32 [num_blocks, num_keys] from _segment_count_kernel
+        rank_ptr,  # int32 [n] out: exclusive rank of each element among equal keys
+        n,
+        num_keys: tl.constexpr,
+        block: tl.constexpr,
+        blocks_pow2: tl.constexpr,
+    ):
+        """Exclusive rank of every element among the elements with the same key,
+        in array order: the block prefix from the per-block counts plus an
+        in-block scan. Deterministic, no atomics, no global scan."""
+        pid = tl.program_id(0)
+        offs = pid * block + tl.arange(0, block)
+        keys = tl.load(keys_ptr + offs, mask=offs < n, other=-1)
+        blocks = tl.arange(0, blocks_pow2)
+        rank = tl.zeros((block,), dtype=tl.int32)
+        for key in tl.static_range(num_keys):
+            prior = tl.sum(
+                tl.load(counts_ptr + blocks * num_keys + key, mask=blocks < pid, other=0), axis=0
+            )
+            is_key = (keys == key).to(tl.int32)
+            exclusive = tl.cumsum(is_key, axis=0) - is_key
+            rank = tl.where(keys == key, prior + exclusive, rank)
+        tl.store(rank_ptr + offs, rank, mask=offs < n)
+
+    @triton.jit
+    def _column_count_kernel(
+        x_ptr,  # uint8 [n_rows, ncols]
+        counts_ptr,  # int32 [num_blocks, ncols] out
+        n_rows,
+        ncols: tl.constexpr,
+        cols_pow2: tl.constexpr,
+        block: tl.constexpr,
+    ):
+        """Per block of rows, the per-column sum of a row-major 0/1 matrix."""
+        pid = tl.program_id(0)
+        rows = pid * block + tl.arange(0, block)
+        cols = tl.arange(0, cols_pow2)
+        mask = (rows[:, None] < n_rows) & (cols[None, :] < ncols)
+        x = tl.load(x_ptr + rows[:, None] * ncols + cols[None, :], mask=mask, other=0).to(tl.int32)
+        tl.store(counts_ptr + pid * ncols + cols, tl.sum(x, axis=0), mask=cols < ncols)
+
+    @triton.jit
+    def _column_scan_kernel(
+        x_ptr,  # uint8 [n_rows, ncols]
+        counts_ptr,  # int [num_blocks, ncols] (row stride counts_stride)
+        out_ptr,  # int32 [n_rows, ncols] out: inclusive per-column prefix over rows
+        n_rows,
+        counts_stride,
+        ncols: tl.constexpr,
+        cols_pow2: tl.constexpr,
+        block: tl.constexpr,
+        blocks_pow2: tl.constexpr,
+    ):
+        pid = tl.program_id(0)
+        rows = pid * block + tl.arange(0, block)
+        cols = tl.arange(0, cols_pow2)
+        mask = (rows[:, None] < n_rows) & (cols[None, :] < ncols)
+        x = tl.load(x_ptr + rows[:, None] * ncols + cols[None, :], mask=mask, other=0).to(tl.int32)
+        blocks = tl.arange(0, blocks_pow2)
+        bmask = (blocks[:, None] < pid) & (cols[None, :] < ncols)
+        prior = tl.sum(
+            tl.load(counts_ptr + blocks[:, None] * counts_stride + cols[None, :], mask=bmask, other=0), axis=0
+        ).to(tl.int32)
+        inclusive = tl.cumsum(x, axis=0) + prior[None, :]
+        tl.store(out_ptr + rows[:, None] * ncols + cols[None, :], inclusive, mask=mask)
+
+    @triton.jit
     def _build_wire_send_index_kernel(
         routing_map_ptr,  # uint8 [T, E], slot-space routing bits
-        order_ptr,  # int64 [T, EP], inclusive per-destination token prefix of hits
-        base_ptr,  # int64 [EP], exclusive per-destination wire-row base
+        order_ptr,  # int32 [T, EP], inclusive per-destination token prefix of hits
+        send_counts_ptr,  # int64 [EP], wire rows per destination (exclusive prefix = row base)
         indices_ptr,  # int64 [T, K] out: set-bit expert ids, ascending
         slot_wire_rows_ptr,  # int64 [T, K] out: wire row of every route slot
         token_wire_rows_ptr,  # int64 [T, K] out: wire row at its first slot, else -1
@@ -204,6 +290,7 @@ if triton is not None:
         experts_pow2: tl.constexpr,
         num_local_experts: tl.constexpr,
         ep_size: tl.constexpr,
+        ep_pow2: tl.constexpr,
         topk: tl.constexpr,
     ):
         """One program per token builds every send-side dedup index in one pass.
@@ -235,8 +322,10 @@ if triton is not None:
         slot_ok = set_mask & (slot < topk)
         dest = cols // num_local_experts
         local_expert = (cols % num_local_experts).to(tl.int64)
-        order_t = tl.load(order_ptr + token * ep_size + dest, mask=slot_ok, other=0)
-        base_d = tl.load(base_ptr + dest, mask=slot_ok, other=0)
+        order_t = tl.load(order_ptr + token * ep_size + dest, mask=slot_ok, other=0).to(tl.int64)
+        dests = tl.arange(0, ep_pow2)
+        send_counts = tl.load(send_counts_ptr + dests, mask=dests < ep_size, other=0)
+        base_d = tl.sum(tl.where(dests[None, :] < dest[:, None], send_counts[None, :], 0), axis=1)
         wire = base_d + order_t - 1
 
         tl.store(indices_ptr + token * topk + slot, cols.to(tl.int64), mask=slot_ok)
@@ -260,21 +349,136 @@ if triton is not None:
         tl.store(wire_experts_ptr + wire * topk + slot, local_expert, mask=slot_ok)
 
     @triton.jit
-    def _build_wire_recv_index_kernel(
-        experts_ptr,  # int64 [R, K], received local experts (-1 inactive)
-        order_ptr,  # int64 [nle, R*K], inclusive per-expert membership prefix
-        base_ptr,  # int64 [nle], exclusive expert-major row base
+    def _routing_counts_kernel(
+        routing_ptr,  # uint8 [T, E] routing bits (slot space)
+        hits_ptr,  # uint8 [T, EP] out: token routes to destination rank
+        partial_ptr,  # int64 [num_blocks, E + EP] out: per-block expert counts | destination counts
+        num_tokens,
+        num_experts: tl.constexpr,
+        experts_pow2: tl.constexpr,
+        num_local_experts: tl.constexpr,
+        ep_size: tl.constexpr,
+        block: tl.constexpr,
+    ):
+        """One pass over a block of tokens: expert counts, destination hit map and
+        per-destination wire-row counts (replaces sum / reshape-any / sum / cat)."""
+        pid = tl.program_id(0)
+        rows = pid * block + tl.arange(0, block)
+        cols = tl.arange(0, experts_pow2)
+        mask = (rows[:, None] < num_tokens) & (cols[None, :] < num_experts)
+        bits = tl.load(routing_ptr + rows[:, None] * num_experts + cols[None, :], mask=mask, other=0).to(tl.int32)
+        width = num_experts + ep_size
+        tl.store(
+            partial_ptr + pid * width + cols, tl.sum(bits, axis=0).to(tl.int64), mask=cols < num_experts
+        )
+        dest = cols // num_local_experts
+        for d in tl.static_range(ep_size):
+            hit = tl.sum(tl.where(dest[None, :] == d, bits, 0), axis=1) > 0
+            tl.store(hits_ptr + rows * ep_size + d, hit.to(tl.uint8), mask=rows < num_tokens)
+            tl.store(partial_ptr + pid * width + num_experts + d, tl.sum(hit.to(tl.int64), axis=0))
+
+    @triton.jit
+    def _recv_count_kernel(
+        experts_ptr,  # payload dtype [R, K] (strided), received local expert ids, -1 inactive
+        counts_ptr,  # int32 [num_blocks, nle] out
+        num_rows,
+        experts_stride_0,
+        experts_stride_1,
+        num_local_experts: tl.constexpr,
+        rows_per_block: tl.constexpr,
+        topk: tl.constexpr,
+        block_pow2: tl.constexpr,
+    ):
+        pid = tl.program_id(0)
+        offs = tl.arange(0, block_pow2)
+        in_block = offs < rows_per_block * topk
+        row = (pid * rows_per_block + offs // topk).to(tl.int64)
+        slot = offs % topk
+        valid = in_block & (row < num_rows)
+        expert = tl.load(
+            experts_ptr + row * experts_stride_0 + slot * experts_stride_1, mask=valid, other=-1
+        ).to(tl.int32)
+        for key in tl.static_range(num_local_experts):
+            tl.store(counts_ptr + pid * num_local_experts + key, tl.sum((expert == key).to(tl.int32), axis=0))
+
+    @triton.jit
+    def _recv_rank_index_kernel(
+        experts_ptr,  # payload dtype [R, K] (strided)
+        counts_ptr,  # int32 [num_blocks, nle] from _recv_count_kernel
+        expert_counts_ptr,  # int64 [nle], rows per local expert (exclusive prefix = row base)
+        probs_ptr,  # payload dtype [R, K] (strided), received routing probabilities
         wire_to_expert_rows_ptr,  # int64 [R, K] out: expert row per slot, else -1
         expert_wire_rows_ptr,  # int64 [A] out: expert-major row -> wire row
-        total_flat,  # R * K
+        expert_probs_ptr,  # fp32 [A] out: routing probability of each expert-major row
+        num_rows,
+        experts_stride_0,
+        experts_stride_1,
+        probs_stride_0,
+        probs_stride_1,
+        num_local_experts: tl.constexpr,
+        experts_pow2: tl.constexpr,
+        rows_per_block: tl.constexpr,
+        topk: tl.constexpr,
+        block_pow2: tl.constexpr,
+        blocks_pow2: tl.constexpr,
+    ):
+        """Rank every received slot among the slots of its expert (block prefix +
+        in-block scan), and write the expert-major indices and probabilities in the
+        same pass, straight from the bf16 payload columns."""
+        pid = tl.program_id(0)
+        offs = tl.arange(0, block_pow2)
+        in_block = offs < rows_per_block * topk
+        row = (pid * rows_per_block + offs // topk).to(tl.int64)
+        slot = offs % topk
+        in_rows = in_block & (row < num_rows)
+        expert = tl.load(
+            experts_ptr + row * experts_stride_0 + slot * experts_stride_1, mask=in_rows, other=-1
+        ).to(tl.int32)
+        valid = in_rows & (expert >= 0)
+        blocks = tl.arange(0, blocks_pow2)
+        rank = tl.zeros((block_pow2,), dtype=tl.int32)
+        for key in tl.static_range(num_local_experts):
+            prior = tl.sum(
+                tl.load(counts_ptr + blocks * num_local_experts + key, mask=blocks < pid, other=0), axis=0
+            )
+            is_key = (expert == key).to(tl.int32)
+            rank = tl.where(expert == key, prior + tl.cumsum(is_key, axis=0) - is_key, rank)
+        experts = tl.arange(0, experts_pow2)
+        expert_counts = tl.load(expert_counts_ptr + experts, mask=experts < num_local_experts, other=0)
+        safe_expert = tl.where(valid, expert, 0)
+        base = tl.sum(
+            tl.where(experts[None, :] < safe_expert[:, None], expert_counts[None, :], 0), axis=1
+        )
+        expert_row = base + rank.to(tl.int64)
+        flat = row * topk + slot
+        tl.store(wire_to_expert_rows_ptr + flat, tl.where(valid, expert_row, -1), mask=in_rows)
+        tl.store(expert_wire_rows_ptr + expert_row, row, mask=valid)
+        prob = tl.load(probs_ptr + row * probs_stride_0 + slot * probs_stride_1, mask=valid, other=0.0)
+        tl.store(expert_probs_ptr + expert_row, prob.to(tl.float32), mask=valid)
+
+    @triton.jit
+    def _build_wire_recv_index_kernel(
+        experts_ptr,  # int64 [R, K], received local experts (-1 inactive)
+        rank_ptr,  # int32 [R*K], exclusive rank of each slot among slots of the same expert
+        expert_counts_ptr,  # int64 [nle], rows per local expert (exclusive prefix = row base)
+        probs_ptr,  # payload dtype, received routing probabilities (strided [R, K])
+        wire_to_expert_rows_ptr,  # int64 [R, K] out: expert row per slot, else -1
+        expert_wire_rows_ptr,  # int64 [A] out: expert-major row -> wire row
+        expert_probs_ptr,  # fp32 [A] out: routing probability of each expert-major row
+        probs_stride_0,
+        probs_stride_1,
+        num_local_experts: tl.constexpr,
+        experts_pow2: tl.constexpr,
         topk: tl.constexpr,
         topk_pow2: tl.constexpr,
     ):
         """One program per received wire row builds the receive-side indices.
 
         Replaces the ~19-launch torch composition in ``_expand_received``.
-        Expert-major numbering: ``base[e] + order[e, flat_slot] - 1`` reproduces
-        the membership-compaction order (rows ascending within an expert).
+        Expert-major numbering: ``base[e] + rank[flat_slot]`` reproduces the
+        membership-compaction order (rows ascending within an expert). The
+        same pass scatters each slot's routing probability to its expert-major
+        row, so the dispatcher needs no separate probability gather.
         """
         row = tl.program_id(0)
         ks = tl.arange(0, topk_pow2)
@@ -283,15 +487,23 @@ if triton is not None:
         valid = kmask & (expert >= 0)
         safe_expert = tl.where(valid, expert, 0)
         flat = row * topk + ks
-        order_e = tl.load(order_ptr + safe_expert * total_flat + flat, mask=valid, other=0)
-        base_e = tl.load(base_ptr + safe_expert, mask=valid, other=0)
-        expert_row = base_e + order_e - 1
+        rank = tl.load(rank_ptr + flat, mask=valid, other=0).to(tl.int64)
+        experts = tl.arange(0, experts_pow2)
+        expert_counts = tl.load(expert_counts_ptr + experts, mask=experts < num_local_experts, other=0)
+        base_e = tl.sum(
+            tl.where(experts[None, :] < safe_expert[:, None], expert_counts[None, :], 0), axis=1
+        )
+        expert_row = base_e + rank
         tl.store(
             wire_to_expert_rows_ptr + flat,
             tl.where(valid, expert_row, -1),
             mask=kmask,
         )
         tl.store(expert_wire_rows_ptr + expert_row, row.to(tl.int64), mask=valid)
+        prob = tl.load(
+            probs_ptr + row * probs_stride_0 + ks * probs_stride_1, mask=valid, other=0.0
+        )
+        tl.store(expert_probs_ptr + expert_row, prob.to(tl.float32), mask=valid)
 
     @triton.jit
     def _restore_token_dedup_kernel(
@@ -501,6 +713,7 @@ def _expanded_token_dedup_grad(
         grad_received,
         grad_output.stride(0),
         grad_output.stride(1),
+        hidden_size,
         grad_output.shape[0],
         hidden_size=hidden_size,
         topk=wire_to_expert_rows.shape[1],
@@ -590,6 +803,78 @@ class _RestoreTokenDedup(torch.autograd.Function):
         return grad_output.index_select(0, wire_tokens), None, None
 
 
+class _UnpackTokenDedupPayload(torch.autograd.Function):
+    """Expand the received payload's activations to expert-major rows and hand out the
+    per-expert-row probabilities, writing the payload gradient in ONE pass.
+
+    The payload is sliced three ways (activation | expert ids | probabilities); letting
+    autograd differentiate the slices costs a zero-filled payload-shaped gradient plus an
+    add per slice. Here the bounded gather-sum writes the activation columns directly
+    into the payload gradient and the probability columns are filled by a gather.
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        payload: torch.Tensor,
+        expert_wire_rows: torch.Tensor,
+        wire_to_expert_rows: torch.Tensor,
+        expert_probs: torch.Tensor,
+        hidden_size: int,
+        topk: int,
+    ):
+        ctx.save_for_backward(expert_wire_rows, wire_to_expert_rows)
+        ctx.hidden_size, ctx.topk = hidden_size, topk
+        ctx.payload_shape, ctx.payload_dtype = payload.shape, payload.dtype
+        expanded = payload[:, :hidden_size].index_select(0, expert_wire_rows)
+        return expanded, expert_probs
+
+    @staticmethod
+    def backward(ctx, grad_expanded: torch.Tensor, grad_expert_probs: torch.Tensor):
+        expert_wire_rows, wire_to_expert_rows = ctx.saved_tensors
+        hidden_size, topk = ctx.hidden_size, ctx.topk
+        num_rows, width = ctx.payload_shape
+        grad_payload = torch.empty(ctx.payload_shape, dtype=ctx.payload_dtype, device=grad_expanded.device)
+        if num_rows:
+            block_size = 1024
+            grid = (num_rows, triton.cdiv(hidden_size, block_size))
+            _unpack_token_dedup_grad_kernel[grid](
+                grad_expanded,
+                wire_to_expert_rows,
+                grad_payload,
+                grad_expanded.stride(0),
+                grad_expanded.stride(1),
+                width,
+                grad_expanded.shape[0],
+                hidden_size=hidden_size,
+                topk=topk,
+                block_size=block_size,
+            )
+        # Expert-id columns and alignment padding carry no gradient; probabilities do.
+        grad_payload[:, hidden_size:].zero_()
+        if grad_expert_probs is not None and num_rows:
+            valid = wire_to_expert_rows >= 0
+            grad = grad_expert_probs.index_select(0, wire_to_expert_rows.clamp(min=0).reshape(-1))
+            grad = torch.where(valid, grad.view_as(wire_to_expert_rows), torch.zeros((), dtype=grad.dtype, device=grad.device))
+            grad_payload[:, hidden_size + topk : hidden_size + 2 * topk].copy_(grad)
+        return grad_payload, None, None, None, None, None
+
+
+def unpack_token_dedup_payload(
+    payload: torch.Tensor,
+    expert_wire_rows: torch.Tensor,
+    wire_to_expert_rows: torch.Tensor,
+    expert_probs: torch.Tensor,
+    hidden_size: int,
+    topk: int,
+):
+    """Return ``(expanded, expert_probs)`` from the received payload with a single
+    fused backward into the payload gradient."""
+    return _UnpackTokenDedupPayload.apply(
+        payload, expert_wire_rows, wire_to_expert_rows, expert_probs, hidden_size, topk
+    )
+
+
 def pack_token_dedup_payload(
     hidden_states: torch.Tensor,
     probs: torch.Tensor,
@@ -653,23 +938,93 @@ def fused_index_build_available(device: torch.device) -> bool:
     return triton is not None and device.type == "cuda"
 
 
+def column_prefix_sum(
+    x: torch.Tensor, counts: torch.Tensor | None = None, block: int = 1024
+) -> torch.Tensor:
+    """Inclusive prefix sum over rows of a row-major bool/uint8 ``[n_rows, ncols]``
+    matrix, as int32, with a two-pass block scan (no global scan kernel).
+    ``counts`` may supply the per-``block`` column sums (``[num_blocks, ncols]``,
+    any integer dtype, any row stride) to skip the counting pass."""
+    n_rows, ncols = x.shape
+    num_blocks = max(triton.cdiv(n_rows, block), 1)
+    x8 = x.contiguous().view(torch.uint8)
+    out = torch.empty((n_rows, ncols), dtype=torch.int32, device=x.device)
+    if n_rows:
+        cols_pow2 = triton.next_power_of_2(ncols)
+        if counts is None:
+            counts = torch.empty((num_blocks, ncols), dtype=torch.int32, device=x.device)
+            _column_count_kernel[(num_blocks,)](
+                x8, counts, n_rows, ncols=ncols, cols_pow2=cols_pow2, block=block
+            )
+        _column_scan_kernel[(num_blocks,)](
+            x8, counts, out, n_rows, counts.stride(0), ncols=ncols, cols_pow2=cols_pow2, block=block,
+            blocks_pow2=triton.next_power_of_2(num_blocks),
+        )
+    return out
+
+
+def routing_counts(routing_map: torch.Tensor, num_local_experts: int, ep_size: int, block: int = 256):
+    """One fused pass over the routing map. Returns ``(packed, hits, partial)``:
+    ``packed`` int64 ``[E + EP]`` = per-expert token counts followed by per-destination
+    wire-row counts (the metadata all-gather payload), ``hits`` uint8 ``[T, EP]`` and
+    ``partial`` int64 ``[num_blocks, E + EP]`` the per-``block`` partial counts (its
+    destination columns feed :func:`column_prefix_sum`)."""
+    num_tokens, num_experts = routing_map.shape
+    device = routing_map.device
+    num_blocks = max(triton.cdiv(num_tokens, block), 1)
+    hits = torch.empty((num_tokens, ep_size), dtype=torch.uint8, device=device)
+    partial = torch.zeros((num_blocks, num_experts + ep_size), dtype=torch.long, device=device)
+    if num_tokens:
+        _routing_counts_kernel[(num_blocks,)](
+            routing_map.contiguous().view(torch.uint8),
+            hits,
+            partial,
+            num_tokens,
+            num_experts=num_experts,
+            experts_pow2=triton.next_power_of_2(num_experts),
+            num_local_experts=num_local_experts,
+            ep_size=ep_size,
+            block=block,
+        )
+    return partial.sum(dim=0), hits, partial
+
+
+def segment_ranks(keys: torch.Tensor, num_keys: int) -> torch.Tensor:
+    """Exclusive rank of every element of ``keys`` (int64, -1 = inactive) among the
+    elements with the same key, in array order; int32. Two-pass block scan."""
+    n = keys.numel()
+    block = 1024
+    num_blocks = max(triton.cdiv(n, block), 1)
+    counts = torch.empty((num_blocks, num_keys), dtype=torch.int32, device=keys.device)
+    rank = torch.empty((n,), dtype=torch.int32, device=keys.device)
+    if n:
+        _segment_count_kernel[(num_blocks,)](keys, counts, n, num_keys=num_keys, block=block)
+        _segment_rank_kernel[(num_blocks,)](
+            keys, counts, rank, n, num_keys=num_keys, block=block,
+            blocks_pow2=triton.next_power_of_2(num_blocks),
+        )
+    return rank
+
+
 def build_wire_send_index(
     routing_map: torch.Tensor,
-    order: torch.Tensor,
-    base: torch.Tensor,
+    hits: torch.Tensor,
+    dedup_send_counts: torch.Tensor,
     num_local_experts: int,
     ep_size: int,
     topk: int,
     max_wire_rows: int,
+    hit_block_counts: torch.Tensor | None = None,
+    hit_block: int = 1024,
 ):
     """Build every send-side dedup index tensor with one kernel launch.
 
-    ``order`` is ``hits.cumsum(0)`` ([tokens, ep_size] inclusive per-destination
-    token prefix) and ``base`` the exclusive cumsum of the per-destination wire
-    counts, both pure GPU tensors -- so this needs NO host split values and can
-    run while the metadata all-gather is still in flight. The wire tensors are
-    sized ``max_wire_rows`` (an upper bound); the caller narrows them to the
-    real count once the splits have landed on the host.
+    ``hits`` is the ``[tokens, ep_size]`` destination hit map and
+    ``dedup_send_counts`` its per-destination column sums, both pure GPU
+    tensors -- so this needs NO host split values and can run while the
+    metadata all-gather is still in flight. The wire tensors are sized
+    ``max_wire_rows`` (an upper bound); the caller narrows them to the real
+    count once the splits have landed on the host.
 
     Returns ``(indices, slot_wire_rows, token_wire_rows, wire_tokens,
     wire_experts)`` with the same semantics the torch path in
@@ -687,10 +1042,11 @@ def build_wire_send_index(
     # probabilities on them); the kernel writes active slots only.
     wire_experts = torch.full((max_wire_rows, topk), -1, dtype=torch.long, device=device)
     if num_tokens:
+        order = column_prefix_sum(hits, hit_block_counts, hit_block)
         _build_wire_send_index_kernel[(num_tokens,)](
             routing_map.contiguous().view(torch.uint8),
             order,
-            base,
+            dedup_send_counts,
             indices,
             slot_wire_rows,
             token_wire_rows,
@@ -700,6 +1056,7 @@ def build_wire_send_index(
             experts_pow2=triton.next_power_of_2(num_experts),
             num_local_experts=num_local_experts,
             ep_size=ep_size,
+            ep_pow2=triton.next_power_of_2(ep_size),
             topk=topk,
         )
     return indices, slot_wire_rows, token_wire_rows, wire_tokens, wire_experts
@@ -709,35 +1066,45 @@ def build_wire_recv_index(
     received_experts: torch.Tensor,
     tokens_per_local_expert: torch.Tensor,
     num_assignments: int,
+    received_probs: torch.Tensor,
 ):
     """Build the receive-side expert-major indices with one kernel launch.
 
-    Returns ``(wire_to_expert_rows, expert_wire_rows)``: the former maps each
-    received (wire row, slot) to its expert-major row (-1 inactive), the latter
-    maps each expert-major row back to its wire row -- exactly what the torch
-    membership-compaction path in ``_expand_received`` produced.
+    Returns ``(wire_to_expert_rows, expert_wire_rows, expert_probs)``: the
+    first maps each received (wire row, slot) to its expert-major row (-1
+    inactive), the second maps each expert-major row back to its wire row --
+    exactly what the torch membership-compaction path in ``_expand_received``
+    produced -- and the third is the fp32 routing probability of every
+    expert-major row. ``received_experts`` and ``received_probs`` are the
+    ``[R, K]`` column slices of the payload (any dtype holding the integer ids
+    exactly, -1 = inactive); two launches, no host values beyond the sizes.
     """
     num_rows, topk = received_experts.shape
     device = received_experts.device
-    flat_experts = received_experts.reshape(-1)
     num_local_experts = tokens_per_local_expert.shape[0]
-    membership = (
-        torch.arange(num_local_experts, device=device).unsqueeze(1)
-        == flat_experts.unsqueeze(0)
-    )
-    order = membership.cumsum(1)
-    base = tokens_per_local_expert.cumsum(0) - tokens_per_local_expert
     wire_to_expert_rows = torch.empty((num_rows, topk), dtype=torch.long, device=device)
     expert_wire_rows = torch.empty((num_assignments,), dtype=torch.long, device=device)
+    expert_probs = torch.empty((num_assignments,), dtype=torch.float32, device=device)
+    rows_per_block = max(1024 // topk, 1)
+    num_blocks = max(triton.cdiv(num_rows, rows_per_block), 1)
+    counts = torch.empty((num_blocks, num_local_experts), dtype=torch.int32, device=device)
     if num_rows:
-        _build_wire_recv_index_kernel[(num_rows,)](
-            received_experts.contiguous(),
-            order,
-            base,
-            wire_to_expert_rows,
-            expert_wire_rows,
-            flat_experts.numel(),
+        common = dict(
+            num_local_experts=num_local_experts,
+            rows_per_block=rows_per_block,
             topk=topk,
-            topk_pow2=triton.next_power_of_2(topk),
+            block_pow2=triton.next_power_of_2(rows_per_block * topk),
         )
-    return wire_to_expert_rows, expert_wire_rows
+        _recv_count_kernel[(num_blocks,)](
+            received_experts, counts, num_rows,
+            received_experts.stride(0), received_experts.stride(1), **common,
+        )
+        _recv_rank_index_kernel[(num_blocks,)](
+            received_experts, counts, tokens_per_local_expert, received_probs,
+            wire_to_expert_rows, expert_wire_rows, expert_probs, num_rows,
+            received_experts.stride(0), received_experts.stride(1),
+            received_probs.stride(0), received_probs.stride(1),
+            experts_pow2=triton.next_power_of_2(num_local_experts),
+            blocks_pow2=triton.next_power_of_2(num_blocks), **common,
+        )
+    return wire_to_expert_rows, expert_wire_rows, expert_probs
