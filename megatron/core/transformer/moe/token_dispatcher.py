@@ -1398,10 +1398,13 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             self._dedup_expert_wire_rows = expert_wire_rows
             # Weighted combine (default): the routing weights are applied in the combine's
             # reduce kernel and the experts get no probabilities; experts-side weighting
-            # remains for moe_apply_probs_on_input.
+            # remains for moe_apply_probs_on_input and where the experts fuse the multiply.
             weighted = (
                 self.config.moe_token_dedup_weighted_combine
                 and not self.config.moe_apply_probs_on_input
+                and not self.config.use_transformer_engine_op_fuser
+                and not self.config.use_fused_weighted_squared_relu
+                and (self.config.use_te_activation_func or not self.config.bias_activation_fusion)
             )
             expanded, permuted_probs = unpack_token_dedup_payload(
                 global_input_tokens, expert_wire_rows, wire_to_expert_rows, expert_probs,
