@@ -45,7 +45,7 @@ if triton is not None:
         output_width: tl.constexpr,
         block_size: tl.constexpr,
     ):
-        row = tl.program_id(0)
+        row = tl.program_id(0).to(tl.int64)
         block = tl.program_id(1)
         columns = block * block_size + tl.arange(0, block_size)
         output_mask = columns < output_width
@@ -81,7 +81,7 @@ if triton is not None:
         topk: tl.constexpr,
         block_size: tl.constexpr,
     ):
-        token = tl.program_id(0)
+        token = tl.program_id(0).to(tl.int64)
         block = tl.program_id(1)
         columns = block * block_size + tl.arange(0, block_size)
         hidden_mask = columns < hidden_size
@@ -131,7 +131,7 @@ if triton is not None:
         block_size: tl.constexpr,
     ):
         """Gather and sum bounded row gradients without metadata handling."""
-        token = tl.program_id(0)
+        token = tl.program_id(0).to(tl.int64)
         block = tl.program_id(1)
         columns = block * block_size + tl.arange(0, block_size)
         hidden_mask = columns < hidden_size
@@ -163,7 +163,7 @@ if triton is not None:
         topk: tl.constexpr,
         block_size: tl.constexpr,
     ):
-        wire_row = tl.program_id(0)
+        wire_row = tl.program_id(0).to(tl.int64)
         block = tl.program_id(1)
         columns = block * block_size + tl.arange(0, block_size)
         hidden_mask = columns < hidden_size
@@ -211,7 +211,7 @@ if triton is not None:
         no atomics; the per-slot probability gradients are accumulated in
         registers across the hidden blocks and written once.
         """
-        wire_row = tl.program_id(0)
+        wire_row = tl.program_id(0).to(tl.int64)
         columns = tl.arange(0, block_size)
         # Per-slot scalar accumulators for d(prob) = sum_h grad_output * expert_value
         # (tl.arange needs a power-of-two length; lanes >= topk are masked off).
@@ -283,7 +283,7 @@ if triton is not None:
         consistent order is valid because the probabilities ride in the same
         slots).
         """
-        token = tl.program_id(0)
+        token = tl.program_id(0).to(tl.int64)
         cols = tl.arange(0, experts_pow2)
         emask = cols < num_experts
         bits = tl.load(routing_map_ptr + token * num_experts + cols, mask=emask, other=0).to(
@@ -330,7 +330,7 @@ if triton is not None:
         topk: tl.constexpr,
         block_size: tl.constexpr,
     ):
-        token = tl.program_id(0)
+        token = tl.program_id(0).to(tl.int64)
         block = tl.program_id(1)
         columns = block * block_size + tl.arange(0, block_size)
         hidden_mask = columns < hidden_size
@@ -605,6 +605,29 @@ class _WeightedReduceTokenDedup(torch.autograd.Function):
         return grad_expert, None, grad_prob
 
 
+class _ReduceTokenDedup(torch.autograd.Function):
+    """Sum each wire row's expert rows; the adjoint of ``_ExpandTokenDedup``.
+
+    Used when the routing weights are applied inside the experts (experts-side
+    weighting), so the deduplicated combine only has to sum.
+    """
+
+    @staticmethod
+    def forward(ctx, expert_output, expert_wire_rows, wire_to_expert_rows):
+        ctx.save_for_backward(expert_wire_rows)
+        num_wire_rows, hidden_size = wire_to_expert_rows.shape[0], expert_output.shape[1]
+        if num_wire_rows == 0:
+            return expert_output.new_empty((0, hidden_size))
+        return _expanded_token_dedup_grad(
+            expert_output, wire_to_expert_rows, num_wire_rows, hidden_size, expert_wire_rows
+        )
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (expert_wire_rows,) = ctx.saved_tensors
+        return grad_output.index_select(0, expert_wire_rows), None, None
+
+
 class _RestoreTokenDedup(torch.autograd.Function):
     """Sum destination partials into tokens with a gather-only backward."""
 
@@ -677,6 +700,15 @@ def weighted_reduce_token_dedup_expert_output(
 ) -> torch.Tensor:
     """Return one probability-weighted expert-output row per wire row."""
     return _WeightedReduceTokenDedup.apply(expert_output, wire_to_expert_rows, wire_probs)
+
+
+def reduce_token_dedup_expert_output(
+    expert_output: torch.Tensor,
+    expert_wire_rows: torch.Tensor,
+    wire_to_expert_rows: torch.Tensor,
+) -> torch.Tensor:
+    """Return one summed expert-output row per wire row (experts-side weighting)."""
+    return _ReduceTokenDedup.apply(expert_output, expert_wire_rows, wire_to_expert_rows)
 
 
 def restore_token_dedup_output(

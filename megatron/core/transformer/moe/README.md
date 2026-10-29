@@ -443,9 +443,12 @@ EP All-to-All can consume 30-40% of training time without optimization. These fe
 With the `alltoall` dispatcher a token is sent once per selected expert, even when several of its experts live on the
 same EP rank. `--moe-token-dedup` sends one row per unique (token, destination rank); the row carries the token's local
 expert ids and routing weights, the receiver expands it into expert-major order for the grouped GEMM, and the combine
-is deduplicated the same way. Routing and the rows each expert computes are unchanged; only the summation order of a
-token's expert outputs in the combine differs (bf16 rounding level). The expert computation itself is
-unchanged; the dispatcher hands the experts expanded expert-major rows exactly like the stock dispatcher.
+is deduplicated the same way. Routing and the rows each expert computes are unchanged; the routing weights travel in
+the activation dtype and the summation order of a token's expert outputs differs (both at bf16 rounding level). The
+dispatcher hands the experts expanded expert-major rows exactly like the stock dispatcher.
+The combine applies the routing weights while it sums a wire row's expert outputs (`moe_token_dedup_weighted_combine`,
+default True) and the experts receive all-ones weights; with `--moe-apply-probs-on-input`, the TE op fuser or a fused
+weighted activation the weights are applied inside the experts as usual and the combine is a plain sum.
 
 > **Requirements**: `--moe-token-dispatcher-type alltoall`, `expert_model_parallel_size > 1`,
 > `--expert-tensor-parallel-size 1`, dropless routing (no capacity factor).
