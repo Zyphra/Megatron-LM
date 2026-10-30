@@ -1566,6 +1566,9 @@ def validate_args(args, defaults={}):
         assert args.num_experts % args.expert_model_parallel_size == 0, \
             "Number of experts should be a multiple of expert model parallel_size."
 
+    # Token dedup (see validate_moe_args).
+    validate_moe_args(args)
+
     # MoE router check
     if isinstance(args.moe_router_load_balancing_type, list) and len(args.moe_router_load_balancing_type) == 1:
         args.moe_router_load_balancing_type = args.moe_router_load_balancing_type[0]
@@ -1992,6 +1995,28 @@ def validate_args(args, defaults={}):
     _print_args("arguments", args)
 
     return args
+
+
+def validate_moe_args(args, defaults={}):
+    """Validate the token-dedup MoE options.
+
+    Runs from validate_args once num_experts and expert_model_parallel_size are final.
+    """
+    if getattr(args, 'moe_token_dedup', False):
+        if args.moe_token_dispatcher_type != 'alltoall':
+            raise ValueError(
+                "--moe-token-dedup currently only supports "
+                "--moe-token-dispatcher-type alltoall, got "
+                f"'{args.moe_token_dispatcher_type}'.")
+        if args.moe_expert_capacity_factor is not None or \
+                args.moe_pad_expert_input_to_capacity:
+            raise ValueError(
+                "--moe-token-dedup supports dropless routing only; remove "
+                "--moe-expert-capacity-factor and --moe-pad-expert-input-to-capacity.")
+        if args.expert_tensor_parallel_size is not None and args.expert_tensor_parallel_size > 1:
+            raise ValueError(
+                "--moe-token-dedup does not support expert tensor parallelism; use "
+                "--expert-tensor-parallel-size 1.")
 
 
 def _print_args(title, args):
@@ -3448,6 +3473,8 @@ def _add_moe_args(parser):
     group.add_argument('--moe-use-upcycling', action='store_true',
                        help='Load a checkpoint of a dense model, convert it into an MoE model, and save the converted model to the path specified by --save. '
                        'Upcycling is implemented on the top of distributed checkpointing, so it supports parallel modes different from the dense model.')
+    # NOTE: --moe-token-dedup is auto-generated from the TransformerConfig dataclass field by
+    # ArgumentGroupFactory (see _add_network_size_args).
     # Router arguments
     group.add_argument('--moe-router-load-balancing-type', nargs='+', type=str,
                        choices=['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn', 'quantile_balancing', 'none'],

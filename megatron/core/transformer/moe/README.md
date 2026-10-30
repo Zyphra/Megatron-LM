@@ -434,8 +434,24 @@ EP All-to-All can consume 30-40% of training time without optimization. These fe
 |--------------|-------------|--------|
 | **EP A2A Overlap** | Overlaps All-to-All with computation by merging FWD-BWD passes of adjacent microbatches | `--overlap-moe-expert-parallel-comm --delay-wgrad-compute` |
 | **Shared Expert Overlap** | Runs shared expert computation concurrently with EP token transfer | `--moe-shared-expert-overlap` |
+| **Token Dedup** | Sends one All-to-All row per unique (token, destination EP rank) instead of one per (token, expert) | `--moe-token-dedup` |
 
 > **Requirements for EP A2A Overlap**: `expert_model_parallel_size > 1`, CUDA_DEVICE_MAX_CONNECTIONS > 1.
+
+#### Token Dedup (`--moe-token-dedup`)
+
+With the `alltoall` dispatcher a token is sent once per selected expert, even when several of its experts live on the
+same EP rank. `--moe-token-dedup` sends one row per unique (token, destination rank); the row carries the token's local
+expert ids and routing weights, the receiver expands it into expert-major order for the grouped GEMM, and the combine
+is deduplicated the same way. Routing and the rows each expert computes are unchanged; the routing weights travel in
+the activation dtype and the summation order of a token's expert outputs differs (both at bf16 rounding level). The
+dispatcher hands the experts expanded expert-major rows exactly like the stock dispatcher.
+The combine applies the routing weights while it sums a wire row's expert outputs (`moe_token_dedup_weighted_combine`,
+default True) and the experts receive all-ones weights; with `--moe-apply-probs-on-input`, the TE op fuser or a fused
+weighted activation the weights are applied inside the experts as usual and the combine is a plain sum.
+
+> **Requirements**: `--moe-token-dispatcher-type alltoall`, `expert_model_parallel_size > 1`,
+> `--expert-tensor-parallel-size 1`, dropless routing (no capacity factor).
 
 ### Compute Optimization
 
@@ -555,6 +571,7 @@ For MoE models, certain configurations may prevent CUDA Graph capture of MoE lay
 | --moe-pad-expert-input-to-capacity | Pad to capacity | False |
 | --moe-token-drop-policy | Drop policy: probs, position | probs |
 | --moe-permute-fusion | Fuse permutation ops | False |
+| --moe-token-dedup | One All-to-All row per unique (token, destination EP rank) with the alltoall dispatcher | False |
 
 ### Performance Optimization
 | Argument | Description | Default |
