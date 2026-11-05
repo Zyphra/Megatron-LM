@@ -1411,7 +1411,7 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             and (self.config.use_te_activation_func or not self.config.bias_activation_fusion)
         )
         if weighted:
-            self._dedup_received_probs = received_probs
+            self._dedup_received_probs = received_probs.contiguous()
             permuted_probs = torch.ones(
                 expanded.shape[0], dtype=self.probs.dtype, device=expanded.device
             )
