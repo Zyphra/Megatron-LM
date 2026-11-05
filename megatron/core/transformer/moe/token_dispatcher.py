@@ -1062,6 +1062,8 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             raise ValueError("Token dedup does not support CUDA graphs.")
         if self.config.batch_invariant_mode:
             raise ValueError("Token dedup does not support batch_invariant_mode.")
+        if self.config.overlap_moe_expert_parallel_comm:
+            raise ValueError("Token dedup does not support --overlap-moe-expert-parallel-comm.")
         if self.num_local_experts > 256:
             raise ValueError(
                 "Token dedup supports at most 256 local experts so expert IDs remain exact "
