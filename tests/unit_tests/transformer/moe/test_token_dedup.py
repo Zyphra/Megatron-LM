@@ -178,12 +178,20 @@ def test_reduce_and_restore_sum_expert_rows():
 class _DedupContainer(MoEModelTestContainer):
     """MoEModelTestContainer whose MoE layer uses the deduplicating alltoall dispatcher."""
 
-    def __init__(self, *args, weighted_combine=True, moe_router_dtype="fp32", **kwargs):
+    def __init__(
+        self,
+        *args,
+        moe_expert_placement=None,
+        weighted_combine=True,
+        moe_router_dtype="fp32",
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.config = dataclasses.replace(
             self.config,
             moe_token_dedup=True,
             moe_token_dedup_weighted_combine=weighted_combine,
+            moe_expert_placement=moe_expert_placement,
             moe_router_dtype=moe_router_dtype,
         )
         self.moe_layer = self.new_moe_layer()
@@ -197,7 +205,8 @@ class TestTokenDedupDispatcher:
     @pytest.mark.internal
     @pytest.mark.timeout(120)
     @pytest.mark.parametrize("ep_size", [2, 8])
-    def test_dropless_roundtrip(self, ep_size):
+    @pytest.mark.parametrize("placement", [None, [3, 1, 0, 2, 7, 5, 4, 6]])
+    def test_dropless_roundtrip(self, ep_size, placement):
         """Dispatch -> expand -> weighted combine -> restore must reproduce the input (and grad)."""
         if Utils.world_size % ep_size != 0:
             pytest.skip(f"needs a world size divisible by EP={ep_size}")
@@ -207,9 +216,13 @@ class TestTokenDedupDispatcher:
             pp_size=1,
             num_moe_experts=8,
             moe_token_dispatcher_type="alltoall",
+            moe_expert_placement=(
+                {"default": placement, "layers": {}} if placement is not None else None
+            ),
         )
         dispatcher = container.moe_layer.token_dispatcher
         assert isinstance(dispatcher, MoEDeduplicatingAlltoAllTokenDispatcher)
+        assert dispatcher.expert_order_is_identity is (placement is None)
         container.dispatcher_dropless_test()
 
     @pytest.mark.internal
