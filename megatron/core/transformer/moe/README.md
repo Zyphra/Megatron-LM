@@ -447,8 +447,9 @@ is deduplicated the same way. Routing and the rows each expert computes are unch
 the activation dtype and the summation order of a token's expert outputs differs (both at bf16 rounding level). The
 dispatcher hands the experts expanded expert-major rows exactly like the stock dispatcher.
 The combine applies the routing weights while it sums a wire row's expert outputs (`moe_token_dedup_weighted_combine`,
-default True) and the experts receive all-ones weights; with `--moe-apply-probs-on-input`, the TE op fuser or a fused
-weighted activation the weights are applied inside the experts as usual and the combine is a plain sum.
+default True) and the experts receive no routing weights and skip their multiply; with `--moe-apply-probs-on-input`,
+the TE op fuser or a fused weighted activation the weights are applied inside the experts as usual and the combine is a
+plain sum.
 
 > **Requirements**: `--moe-token-dispatcher-type alltoall`, `expert_model_parallel_size > 1`,
 > `--expert-tensor-parallel-size 1`, dropless routing (no capacity factor).

@@ -1400,11 +1400,11 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         ]
         expanded = self._expand_received(received, received_experts)
         # Weighted combine (default): the routing probabilities are applied by the combine's
-        # reduce kernel (weighted_reduce_token_dedup_expert_output) and the experts are handed
-        # all-ones probabilities, which keeps the stock expert code path intact. Experts-side
-        # weighting remains for moe_apply_probs_on_input and where the experts fuse the
-        # multiply anyway (the TE op fuser, a fused weighted activation): there the weighted
-        # combine would only keep every expert output alive for the backward.
+        # reduce kernel (weighted_reduce_token_dedup_expert_output) and the experts receive no
+        # probabilities (None) and skip their multiply. Experts-side weighting remains for
+        # moe_apply_probs_on_input and where the experts fuse the multiply anyway (the TE op
+        # fuser, a fused weighted activation): there the weighted combine would only keep
+        # every expert output alive for the backward.
         weighted = (
             self.config.moe_token_dedup_weighted_combine
             and not self.config.moe_apply_probs_on_input
@@ -1414,9 +1414,7 @@ class MoEDeduplicatingAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         )
         if weighted:
             self._dedup_received_probs = received_probs.contiguous()
-            permuted_probs = torch.ones(
-                expanded.shape[0], dtype=self.probs.dtype, device=expanded.device
-            )
+            permuted_probs = None
         else:
             # Weight inside the experts as the stock dispatcher does; the combine then only
             # sums. Each expert-major row takes the payload probability of its owning
