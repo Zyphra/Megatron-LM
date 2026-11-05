@@ -350,6 +350,7 @@ if triton is not None:
         tl.store(output_ptr + token * hidden_size + columns, accumulator, mask=hidden_mask)
 
 
+# pylint: disable=missing-function-docstring
 class _PackTokenDedup(torch.autograd.Function):
     """Pack activations and routes while preserving hidden/probability gradients."""
 
@@ -703,9 +704,7 @@ def weighted_reduce_token_dedup_expert_output(
 
 
 def reduce_token_dedup_expert_output(
-    expert_output: torch.Tensor,
-    expert_wire_rows: torch.Tensor,
-    wire_to_expert_rows: torch.Tensor,
+    expert_output: torch.Tensor, expert_wire_rows: torch.Tensor, wire_to_expert_rows: torch.Tensor
 ) -> torch.Tensor:
     """Return one summed expert-output row per wire row (experts-side weighting)."""
     return _ReduceTokenDedup.apply(expert_output, expert_wire_rows, wire_to_expert_rows)
