@@ -27,6 +27,7 @@ from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
 from megatron.core.transformer.moe.token_dispatcher import (
     MoEAllGatherTokenDispatcher,
     MoEAlltoAllTokenDispatcher,
+    MoEDeduplicatingAlltoAllTokenDispatcher,
     MoEFlexTokenDispatcher,
     MoETokenDispatcher,
 )
@@ -351,7 +352,19 @@ class MoELayer(BaseMoELayer):
                 pg_collection=pg_collection,
             )
         elif config.moe_token_dispatcher_type == "alltoall":
-            self.token_dispatcher = MoEAlltoAllTokenDispatcher(
+            # The deduplicating dispatcher sends one hidden row per unique
+            # (token, destination EP rank) instead of one row per (token, expert). It silently
+            # falls back to the stock dispatcher at EP == 1 where there is nothing to dedup.
+            use_dedup_dispatcher = (
+                getattr(config, "moe_token_dedup", False)
+                and utils.get_pg_size(pg_collection.ep) > 1
+            )
+            dispatcher_cls = (
+                MoEDeduplicatingAlltoAllTokenDispatcher
+                if use_dedup_dispatcher
+                else MoEAlltoAllTokenDispatcher
+            )
+            self.token_dispatcher = dispatcher_cls(
                 self.num_local_experts,
                 self.local_expert_indices,
                 config=self.config,

@@ -653,6 +653,7 @@ class TestMoEModules:
                 {"moe_expert_capacity_factor": 0.5, "moe_pad_expert_input_to_capacity": True},
             ),
             pytest.param("alltoall", 2, {"moe_permute_fusion": HAVE_TE_PERMUTE}, id="alltoall-ep2"),
+            pytest.param("alltoall", 2, {"moe_token_dedup": True}, id="alltoall-dedup-ep2"),
             pytest.param(
                 "flex",
                 2,
